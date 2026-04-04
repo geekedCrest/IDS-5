@@ -305,6 +305,7 @@ function updateThreatLevel() {
 
   d.textContent = level;
   d.className = `threat-level ${level}`;
+  document.body.dataset.threat = level.toLowerCase();
 
   document.querySelectorAll('.tm-seg').forEach(s => s.classList.remove('active'));
   const map = { LOW: 'tm-low', MEDIUM: 'tm-med', HIGH: 'tm-high', CRITICAL: 'tm-crit' };

@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>µIDS Dashboard</title>
   <link rel="icon" href="/static/favicon.ico" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/css/style.css" />
   <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -13,7 +16,10 @@
 
 <!-- ─── Menu Bar ──────────────────────────────────────────────────────────── -->
 <header class="menubar">
-  <div class="logo">µIDS</div>
+  <div class="logo">
+    <span class="logo-mark">µIDS</span>
+    <span class="logo-sub">Sentinel Grid</span>
+  </div>
   <nav class="menus">
     <div class="menu-item" data-menu="file">File
       <div class="dropdown">
