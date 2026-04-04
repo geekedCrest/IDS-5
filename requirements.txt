@@ -3,3 +3,6 @@ scapy>=2.4.1
 netifaces
 scapy
 scapy-python3
+eventlet
+flask
+flask-socketio

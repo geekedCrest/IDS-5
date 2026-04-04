@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>µIDS Dashboard</title>
+  <link rel="icon" href="/static/favicon.ico" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ─── Menu Bar ──────────────────────────────────────────────────────────── -->
+<header class="menubar">
+  <div class="logo">µIDS</div>
+  <nav class="menus">
+    <div class="menu-item" data-menu="file">File
+      <div class="dropdown">
+        <div class="dd-item" onclick="openFile()"><span class="icon">📂</span> Open Capture…</div>
+        <div class="dd-item" onclick="saveCapture()"><span class="icon">💾</span> Save Packets…</div>
+        <div class="dd-sep"></div>
+        <div class="dd-item"><span class="icon">📋</span> Export Rules…</div>
+        <div class="dd-sep"></div>
+        <div class="dd-item"><span class="icon">✖</span> Quit</div>
+      </div>
+    </div>
+    <div class="menu-item" data-menu="edit">Edit
+      <div class="dropdown">
+        <div class="dd-item"><span class="icon">🔍</span> Find Packet…</div>
+        <div class="dd-item"><span class="icon">📌</span> Mark All Displayed</div>
+        <div class="dd-sep"></div>
+        <div class="dd-item"><span class="icon">🗑</span> Clear Packets</div>
+      </div>
+    </div>
+    <div class="menu-item" data-menu="view">View
+      <div class="dropdown">
+        <div class="dd-item" onclick="togglePanel('panel-hex')"><span class="icon">🔢</span> Hex Viewer</div>
+        <div class="dd-item" onclick="togglePanel('panel-alerts')"><span class="icon">🚨</span> Alerts Sidebar</div>
+        <div class="dd-item" onclick="togglePanel('panel-charts')"><span class="icon">📊</span> Charts Panel</div>
+        <div class="dd-sep"></div>
+        <div class="dd-item" onclick="toggleTheme()"><span class="icon">🌓</span> Toggle Theme</div>
+      </div>
+    </div>
+    <div class="menu-item" data-menu="capture">Capture
+      <div class="dropdown">
+        <div class="dd-item" onclick="startCapture()"><span class="icon">▶</span> Start</div>
+        <div class="dd-item" onclick="stopCapture()"><span class="icon">⏹</span> Stop</div>
+        <div class="dd-item" onclick="restartCapture()"><span class="icon">🔄</span> Restart</div>
+        <div class="dd-sep"></div>
+        <div class="dd-item" onclick="showModal('modal-rules')"><span class="icon">📜</span> Manage Rules</div>
+      </div>
+    </div>
+    <div class="menu-item" data-menu="analyze">Analyze
+      <div class="dropdown">
+        <div class="dd-item" onclick="showTab('alerts')"><span class="icon">🚨</span> View Alerts</div>
+        <div class="dd-item" onclick="showTab('stats')"><span class="icon">📈</span> Protocol Stats</div>
+        <div class="dd-item"><span class="icon">🌐</span> Expert Info</div>
+      </div>
+    </div>
+    <div class="menu-item" data-menu="statistics">Statistics
+      <div class="dropdown">
+        <div class="dd-item" onclick="showTab('stats')"><span class="icon">🥧</span> Protocol Distribution</div>
+        <div class="dd-item"><span class="icon">📉</span> IO Graph</div>
+        <div class="dd-item"><span class="icon">🔁</span> Conversations</div>
+      </div>
+    </div>
+  </nav>
+  <div class="menu-spacer"></div>
+  <div class="menu-right" id="uptime-display">00:00:00</div>
+</header>
+
+<!-- ─── Toolbar ───────────────────────────────────────────────────────────── -->
+<div class="toolbar">
+  <button class="tb-btn tb-start" id="btn-start" onclick="startCapture()" title="Start Capture">
+    <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
+    Start
+  </button>
+  <button class="tb-btn tb-stop" id="btn-stop" onclick="stopCapture()" title="Stop Capture" disabled>
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16"/></svg>
+    Stop
+  </button>
+  <button class="tb-btn tb-pause" id="btn-pause" onclick="pauseCapture()" title="Pause" disabled>
+    <svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+    Pause
+  </button>
+  <button class="tb-btn" onclick="restartCapture()" title="Restart">
+    <svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0020 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74A7.93 7.93 0 004 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+    Restart
+  </button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" onclick="openFile()" title="Open File">
+    <svg viewBox="0 0 24 24"><path d="M20 6h-8l-2-2H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2z"/></svg>
+    Open
+  </button>
+  <button class="tb-btn" onclick="saveCapture()" title="Save Capture">
+    <svg viewBox="0 0 24 24"><path d="M17 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V7l-4-4zm-5 16a3 3 0 110-6 3 3 0 010 6zm3-10H5V5h10v4z"/></svg>
+    Save
+  </button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" onclick="showModal('modal-rules')" title="Rules">
+    <svg viewBox="0 0 24 24"><path d="M3 5h2V3a2 2 0 012-2h10a2 2 0 012 2v2h2a1 1 0 010 2h-1v13a2 2 0 01-2 2H5a2 2 0 01-2-2V7H2a1 1 0 010-2h1z"/></svg>
+    Rules
+  </button>
+  <button class="tb-btn" onclick="showTab('stats')" title="Statistics">
+    <svg viewBox="0 0 24 24"><path d="M3 3v18h18v-2H5V3H3zm4 14l4-4 4 4 4-8"/></svg>
+    Stats
+  </button>
+  <div class="tb-spacer"></div>
+  <div class="capture-indicator" id="capture-indicator">
+    <span class="ci-dot" id="ci-dot"></span>
+    <span id="ci-label">Idle</span>
+  </div>
+</div>
+
+<!-- ─── Filter Bar ────────────────────────────────────────────────────────── -->
+<div class="filterbar">
+  <label class="filter-label">Filter:</label>
+  <div class="filter-input-wrap" id="filter-wrap">
+    <input type="text" id="filter-input" placeholder='e.g. tcp, 192.168.0.1, port 80, "CRITICAL"…'
+      oninput="onFilterInput(this.value)" onkeydown="if(event.key==='Enter')applyFilter()" />
+    <button class="filter-clear" onclick="clearFilter()" title="Clear">✕</button>
+  </div>
+  <button class="filter-apply" onclick="applyFilter()">Apply</button>
+  <div class="filter-hint" id="filter-hint"></div>
+</div>
+
+<!-- ─── Main Layout ───────────────────────────────────────────────────────── -->
+<div class="main-layout">
+
+  <!-- Left: Packet panels -->
+  <div class="panels-col" id="panels-col">
+
+    <!-- Tabs -->
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="packets" onclick="showTab('packets')">Packets</button>
+      <button class="tab-btn" data-tab="alerts" onclick="showTab('alerts')">
+        Alerts <span class="badge" id="badge-alerts">0</span>
+      </button>
+      <button class="tab-btn" data-tab="stats" onclick="showTab('stats')">Statistics</button>
+      <button class="tab-btn" data-tab="rules" onclick="showTab('rules'); loadRulesTab()">Rules</button>
+    </div>
+
+    <!-- Packets Tab -->
+    <div class="tab-content active" id="tab-packets">
+      <div class="packet-table-wrap" id="packet-table-wrap">
+        <table class="packet-table" id="packet-table">
+          <thead>
+            <tr>
+              <th class="col-no" onclick="sortTable('id')">No. <span class="sort-arrow" id="sort-id"></span></th>
+              <th class="col-ts" onclick="sortTable('ts')">Time <span class="sort-arrow" id="sort-ts"></span></th>
+              <th class="col-src" onclick="sortTable('src_ip')">Source <span class="sort-arrow" id="sort-src_ip"></span></th>
+              <th class="col-dst" onclick="sortTable('dst_ip')">Destination <span class="sort-arrow" id="sort-dst_ip"></span></th>
+              <th class="col-proto" onclick="sortTable('proto')">Protocol <span class="sort-arrow" id="sort-proto"></span></th>
+              <th class="col-len" onclick="sortTable('length')">Length <span class="sort-arrow" id="sort-length"></span></th>
+              <th class="col-threat">Threat</th>
+              <th class="col-info">Info</th>
+            </tr>
+          </thead>
+          <tbody id="packet-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- Details Panel -->
+      <div class="detail-panel" id="detail-panel">
+        <div class="detail-header">
+          <span>Packet Details</span>
+          <span class="detail-hint" id="detail-hint">Select a packet to inspect</span>
+        </div>
+        <div class="detail-tree" id="detail-tree">
+          <div class="empty-state">No packet selected</div>
+        </div>
+      </div>
+
+      <!-- Hex Panel -->
+      <div class="hex-panel" id="panel-hex">
+        <div class="hex-header">Packet Bytes</div>
+        <div class="hex-body" id="hex-body">
+          <div class="empty-state">No packet selected</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alerts Tab -->
+    <div class="tab-content" id="tab-alerts">
+      <div class="alerts-tab-inner">
+        <div class="alerts-controls">
+          <button class="btn-sm" onclick="clearAlerts()">Clear All</button>
+          <span class="alerts-count-label" id="alerts-count-label">0 alerts</span>
+        </div>
+        <table class="packet-table" id="alert-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Time</th>
+              <th>Type</th>
+              <th>Threat</th>
+              <th>Source</th>
+              <th>Destination</th>
+              <th>Protocol</th>
+              <th>Rule / Detail</th>
+            </tr>
+          </thead>
+          <tbody id="alert-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Stats Tab -->
+    <div class="tab-content" id="tab-stats">
+      <div class="stats-grid">
+        <div class="stats-card">
+          <h3>Protocol Distribution</h3>
+          <div class="chart-wrap"><canvas id="chart-proto"></canvas></div>
+        </div>
+        <div class="stats-card">
+          <h3>Traffic Rate (pkt/s)</h3>
+          <div class="chart-wrap"><canvas id="chart-traffic"></canvas></div>
+        </div>
+        <div class="stats-card wide">
+          <h3>Threat Level Distribution</h3>
+          <div class="chart-wrap"><canvas id="chart-threat"></canvas></div>
+        </div>
+        <div class="stats-card counters">
+          <h3>Counters</h3>
+          <div class="counter-grid" id="counter-grid">
+            <div class="counter-item"><span class="cnt-val" id="cnt-total">0</span><span class="cnt-lbl">Total Packets</span></div>
+            <div class="counter-item"><span class="cnt-val" id="cnt-alerts">0</span><span class="cnt-lbl">Alerts</span></div>
+            <div class="counter-item"><span class="cnt-val" id="cnt-tcp">0</span><span class="cnt-lbl">TCP</span></div>
+            <div class="counter-item"><span class="cnt-val" id="cnt-udp">0</span><span class="cnt-lbl">UDP</span></div>
+            <div class="counter-item"><span class="cnt-val" id="cnt-icmp">0</span><span class="cnt-lbl">ICMP</span></div>
+            <div class="counter-item"><span class="cnt-val" id="cnt-http">0</span><span class="cnt-lbl">HTTP</span></div>
+            <div class="counter-item"><span class="cnt-val" id="cnt-dns">0</span><span class="cnt-lbl">DNS</span></div>
+            <div class="counter-item"><span class="cnt-val" id="cnt-other">0</span><span class="cnt-lbl">Other</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rules Tab -->
+    <div class="tab-content" id="tab-rules">
+      <div class="rules-panel">
+        <div class="rules-controls">
+          <button class="btn-sm" onclick="loadRulesTab()">Refresh</button>
+          <button class="btn-sm btn-accent" onclick="showModal('modal-rules')">Validate Rule</button>
+        </div>
+        <div class="rules-validator">
+          <label>Validate a rule:</label>
+          <input type="text" id="rule-validate-input" placeholder="TCP any:any -> any:any *" />
+          <button class="btn-sm btn-accent" onclick="validateRuleInline()">Check</button>
+          <span id="rule-validate-result"></span>
+        </div>
+        <div id="rules-list"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Right: Alerts + Charts sidebar -->
+  <div class="sidebar" id="sidebar">
+
+    <!-- Threat Indicator -->
+    <div class="sidebar-section threat-widget">
+      <div class="sw-label">System Threat Level</div>
+      <div class="threat-bar">
+        <div class="threat-level" id="threat-level-display">LOW</div>
+        <div class="threat-meter">
+          <div class="tm-seg tm-low">LOW</div>
+          <div class="tm-seg tm-med">MED</div>
+          <div class="tm-seg tm-high">HIGH</div>
+          <div class="tm-seg tm-crit">CRIT</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Alerts -->
+    <div class="sidebar-section" id="panel-alerts">
+      <div class="sidebar-title">
+        <span>Live Alerts</span>
+        <span class="badge-pill" id="sb-alert-count">0</span>
+      </div>
+      <div class="sb-alerts-list" id="sb-alerts-list">
+        <div class="empty-state">No alerts detected</div>
+      </div>
+    </div>
+
+    <!-- Mini Charts -->
+    <div class="sidebar-section" id="panel-charts">
+      <div class="sidebar-title">Traffic Overview</div>
+      <div class="mini-chart-wrap"><canvas id="mini-chart-traffic"></canvas></div>
+      <div class="mini-proto-list" id="mini-proto-list"></div>
+    </div>
+
+    <!-- Active Rules -->
+    <div class="sidebar-section">
+      <div class="sidebar-title">
+        <span>Active Rules</span>
+        <span class="badge-pill" id="sb-rules-count">0</span>
+      </div>
+      <div class="sb-rules-list" id="sb-rules-list">
+        <div class="empty-state">No rules loaded</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ─── Status Bar ────────────────────────────────────────────────────────── -->
+<div class="statusbar">
+  <div class="sb-item"><span class="sb-icon">📡</span><span id="sb-interface">eth0 (simulated)</span></div>
+  <div class="sb-sep"></div>
+  <div class="sb-item">Packets: <strong id="sb-packets">0</strong></div>
+  <div class="sb-sep"></div>
+  <div class="sb-item">Filtered: <strong id="sb-filtered">0</strong></div>
+  <div class="sb-sep"></div>
+  <div class="sb-item">Alerts: <strong id="sb-alerts">0</strong></div>
+  <div class="sb-sep"></div>
+  <div class="sb-item"><span id="sb-status">Idle — press Start to begin capture</span></div>
+  <div class="sb-spacer"></div>
+  <div class="sb-item" id="sb-filter-active"></div>
+  <div class="sb-sep"></div>
+  <div class="sb-item">µIDS v1.0</div>
+</div>
+
+<!-- ─── Rules Modal ───────────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-rules" onclick="closeModal('modal-rules')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <span>Rule Validator</span>
+      <button class="modal-close" onclick="closeModal('modal-rules')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="modal-desc">Enter a rule string to validate it against the IDS rule syntax.</p>
+      <div class="modal-rule-format">
+        <code>PROTO [!]IP|any:[!]PORT(RANGE)|any &lt;&gt;|-&gt; [!]IP|any:[!]PORT(RANGE)|any *</code>
+      </div>
+      <div class="modal-input-row">
+        <input type="text" id="modal-rule-input" placeholder="e.g. TCP 192.168.0.1:any -> any:80 *" />
+        <button class="btn-accent" onclick="validateRule()">Validate</button>
+      </div>
+      <div id="modal-rule-result" class="modal-result"></div>
+      <div class="modal-examples">
+        <div class="me-label">Examples:</div>
+        <div class="me-item" onclick="useExample(this)">TCP 192.168.0.1:any -&gt; any:80 *</div>
+        <div class="me-item" onclick="useExample(this)">ICMP 1.1.1.1:any -&gt; 192.168.178.22:any *</div>
+        <div class="me-item" onclick="useExample(this)">UDP any:[500-510] -&gt; any:any *</div>
+        <div class="me-item" onclick="useExample(this)">TCP !192.168.0.1:[0-8000] &lt;&gt; 127.0.0.1:!8080 *</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Notification Toast ────────────────────────────────────────────────── -->
+<div id="toast-container"></div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>

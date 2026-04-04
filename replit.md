@@ -1,42 +1,48 @@
-# µIDS - Micro Intrusion Detection System
+# µIDS — Micro Intrusion Detection System Dashboard
 
-A Python-based network signature intrusion detection system.
+A Python-based network IDS with a modern Wireshark-inspired web dashboard.
 
-## Project Structure
+## Architecture
 
-- `main.py` - Entry point; starts the Sniffer and Analyzer processes
-- `sniffer.py` - Network packet capture using Scapy (multiprocessing)
-- `analyzer.py` - Packet analysis and rule matching (multiprocessing)
-- `signature.py` - Packet signature representation
-- `rules.py` - Rule parsing and loading
-- `default.rules` - Default IDS rules
-- `eval.rules` - Additional evaluation rules
+### Backend (Python / Flask)
+- `app.py` — Flask + Socket.IO web server (port 5000); background packet simulation thread; integrates with the real IDS rules engine
+- `rules.py` — Rule parser and validator
+- `signature.py` — Packet signature representation and matching logic
+- `analyzer.py` — Multiprocessing packet analyzer (used by CLI mode)
+- `sniffer.py` — Scapy-based packet sniffer (used by CLI mode)
+- `main.py` — Original CLI entry point (requires root + network interface)
 
-## Usage
+### Frontend
+- `templates/index.html` — Full dashboard HTML
+- `static/css/style.css` — Dark theme CSS
+- `static/js/app.js` — Dashboard JavaScript (Socket.IO, Chart.js)
 
-```bash
-sudo python3 main.py <INTERFACE> [RULE_PATH]
-```
+### Rules
+- `default.rules` — Default IDS rules (4 rules)
+- `eval.rules` — Evaluation rules for multiple clients
 
-Example: `sudo python3 main.py eth0 default.rules`
+## Dashboard Features
+- **Top menu bar** — File, Edit, View, Capture, Analyze, Statistics menus
+- **Toolbar** — Start/Stop/Pause/Restart capture, Open/Save, Rules, Stats
+- **Filter bar** — Real-time filter with green/red validation feedback
+- **Packet table** — Sortable columns, color-coded by threat level and protocol
+- **Packet Details** — Expandable layer tree (Frame, Ethernet, IP, TCP/UDP, App)
+- **Hex viewer** — Offset + hex + ASCII representation of raw packet bytes
+- **Alerts tab** — Full alert history with attack type classification
+- **Statistics tab** — Protocol pie chart, traffic rate line chart, threat bar chart, counters
+- **Rules tab** — View all loaded rules with inline validator
+- **Sidebar** — Threat level indicator, live alerts feed, mini charts, active rules list
+- **Status bar** — Interface, packet count, filter count, alerts, uptime
+- **Toast notifications** — Real-time alert toasts for intrusion detections
 
-## Rule Format
-
-```
-PROTO [!]IP|any:[!]PORT(RANGE)|any <>|-> [!]IP|any:[!]PORT(RANGE)|any *PAYLOAD
-```
+## Running
+- **Web Dashboard** (default): `python3 app.py` → http://localhost:5000
+- **CLI mode** (requires root + interface): `sudo python3 main.py <INTERFACE> [RULE_PATH]`
 
 ## Dependencies
-
-- `scapy>=2.4.1` - Packet capture and analysis
-- `netifaces==0.10.7` - Network interface information
-
-## Notes
-
-- Requires root/sudo privileges to capture raw network packets
-- Logs are written to the `logs/` directory (created automatically)
-- In Replit, raw packet capture requires elevated permissions not available in the sandbox
+- `flask` + `flask-socketio` + `eventlet` — Web server and real-time updates
+- `scapy>=2.4.1` — Packet structures and parsing
+- `netifaces==0.10.7` — Network interface info
 
 ## Workflow
-
-- **Start application** (console): Runs `python3 main.py` — exits with usage info unless a network interface is provided
+- **Start application** (webview, port 5000): `python3 app.py`

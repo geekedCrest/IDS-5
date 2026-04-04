@@ -4,7 +4,7 @@ expertMode = true
 
 [nix]
 channel = "stable-25_05"
-packages = ["imagemagickBig", "sox", "tcpdump", "wireshark"]
+packages = ["iana-etc", "imagemagickBig", "sox", "tcpdump", "wireshark"]
 
 [workflows]
 runButton = "Project"
@@ -22,9 +22,14 @@ args = "Start application"
 name = "Start application"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "webview"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python3 main.py"
+args = "python3 app.py"
+waitForPort = 5000
 
-[workflows.workflow.metadata]
-outputType = "console"
+[[ports]]
+localPort = 5000
+externalPort = 80
