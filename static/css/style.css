@@ -129,6 +129,20 @@ html, body {
 .tb-sep { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
 .tb-spacer { flex: 1; }
 
+.iface-selector {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--bg3); border: 1px solid var(--border2);
+  border-radius: 5px; padding: 3px 8px; margin-right: 8px;
+}
+.iface-selector select {
+  background: transparent; border: none; outline: none;
+  color: var(--text); font-size: 12px; cursor: pointer;
+  font-family: 'Cascadia Code', monospace;
+  padding: 0 2px;
+}
+.iface-selector select option { background: var(--bg2); color: var(--text); }
+.iface-selector select:hover { color: var(--accent2); }
+
 .capture-indicator { display: flex; align-items: center; gap: 6px; padding: 0 8px; }
 .ci-dot {
   width: 10px; height: 10px; border-radius: 50%;

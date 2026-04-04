@@ -672,6 +672,27 @@ function toggleTheme() {
 }
 
 // ─── File ops (mock) ──────────────────────────────────────────────────────────
+async function loadInterfaces() {
+  try {
+    const resp = await fetch('/api/interfaces');
+    const ifaces = await resp.json();
+    const sel = el('iface-select');
+    sel.innerHTML = ifaces.map(i => `
+      <option value="${escHtml(i.name)}" ${i.active ? 'selected' : ''}>
+        ${escHtml(i.name)}${i.ip ? ' (' + escHtml(i.ip) + ')' : ''}
+      </option>
+    `).join('');
+  } catch (e) {
+    console.warn('Could not load interfaces:', e);
+  }
+}
+
+function setInterface(name) {
+  if (!name) return;
+  socket.emit('set_interface', { interface: name });
+  toast('info', '📡 Interface Changed', `Now monitoring: ${name}`);
+}
+
 function openFile()  { toast('info', '📂 Open File', 'File dialog not available in web mode'); }
 function saveCapture() {
   const data = JSON.stringify(state.packets.slice(-500), null, 2);
@@ -712,6 +733,7 @@ function scrollBottom() {
 // ─── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   initCharts();
+  loadInterfaces();
 
   // Close dropdowns on outside click
   document.addEventListener('click', (e) => {

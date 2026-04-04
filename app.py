@@ -7,6 +7,7 @@ import os
 from datetime import datetime
 from flask import Flask, render_template, jsonify, request, send_from_directory
 from flask_socketio import SocketIO, emit
+import netifaces
 from rules import load_rules, verify_rules
 from signature import Signature
 
@@ -22,7 +23,7 @@ state = {
     'packet_count': 0,
     'alert_count': 0,
     'filtered_count': 0,
-    'interface': 'eth0 (simulated)',
+    'interface': 'eth0',
     'start_time': None,
     'rules': [],
     'packets': [],
@@ -422,6 +423,20 @@ def api_validate_rule():
         return jsonify({'valid': False, 'error': str(e)})
 
 
+@app.route('/api/interfaces')
+def api_interfaces():
+    ifaces = []
+    for name in netifaces.interfaces():
+        addrs = netifaces.ifaddresses(name)
+        ipv4 = addrs.get(netifaces.AF_INET, [{}])[0].get('addr', '')
+        ifaces.append({
+            'name': name,
+            'ip': ipv4,
+            'active': name == state['interface'],
+        })
+    return jsonify(ifaces)
+
+
 @app.route('/api/stats')
 def api_stats():
     return jsonify({
@@ -483,6 +498,13 @@ def on_restart():
     time.sleep(0.3)
     state['running'] = True
     state['start_time'] = time.time()
+    emit('status_update', _status(), broadcast=True)
+
+
+@socketio.on('set_interface')
+def on_set_interface(data):
+    iface = data.get('interface', 'eth0')
+    state['interface'] = iface
     emit('status_update', _status(), broadcast=True)
 
 
