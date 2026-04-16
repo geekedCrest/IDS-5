@@ -695,6 +695,21 @@ function setInterface(name) {
 }
 
 function openFile()  { toast('info', '📂 Open File', 'File dialog not available in web mode'); }
+function openFolder() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.webkitdirectory = true;
+  input.multiple = true;
+  input.accept = '.pcap,.pcapng,.json,.log';
+  input.onchange = function(e) {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    const names = files.slice(0, 5).map(f => f.name).join(', ');
+    const extra = files.length > 5 ? ` +${files.length - 5} more` : '';
+    toast('success', '📁 Folder Loaded', `${files.length} file(s): ${names}${extra}`);
+  };
+  input.click();
+}
 function saveCapture() {
   const data = JSON.stringify(state.packets.slice(-500), null, 2);
   const blob = new Blob([data], { type: 'application/json' });
