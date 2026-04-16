@@ -4,3 +4,7 @@ logs/
 alerts/
 .venv/
 venv/
+
+# Large ML model file - share separately (e.g. Google Drive)
+*.joblib
+*.pkl
