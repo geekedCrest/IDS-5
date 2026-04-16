@@ -13,10 +13,37 @@ _model = None
 _feature_info = None
 
 
+def _patch_imputers(obj, depth=0):
+    """Fix sklearn version mismatch: older models store _fit_dtype but 1.6+ expects _fill_dtype."""
+    from sklearn.impute import SimpleImputer
+    if isinstance(obj, SimpleImputer):
+        if hasattr(obj, '_fit_dtype') and not hasattr(obj, '_fill_dtype'):
+            obj._fill_dtype = obj._fit_dtype
+        elif hasattr(obj, 'statistics_') and not hasattr(obj, '_fill_dtype'):
+            obj._fill_dtype = obj.statistics_.dtype
+    for attr in ('steps', 'transformers', 'transformer_list'):
+        container = getattr(obj, attr, None)
+        if container:
+            for item in container:
+                if isinstance(item, (list, tuple)):
+                    for sub in item:
+                        if hasattr(sub, '__dict__'):
+                            _patch_imputers(sub, depth + 1)
+                elif hasattr(item, '__dict__'):
+                    _patch_imputers(item, depth + 1)
+    if hasattr(obj, 'named_steps'):
+        for v in obj.named_steps.values():
+            _patch_imputers(v, depth + 1)
+    if hasattr(obj, 'named_transformers_'):
+        for v in obj.named_transformers_.values():
+            _patch_imputers(v, depth + 1)
+
+
 def get_model():
     global _model
     if _model is None:
         _model = joblib.load(MODEL_PATH)
+        _patch_imputers(_model)
     return _model
 
 
