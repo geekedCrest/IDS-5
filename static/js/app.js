@@ -721,10 +721,12 @@ function renderClassifierForm(features) {
   keys.forEach(name => {
     const meta = features[name];
     const cell = document.createElement('div');
-    cell.className = 'clf-cell';
+    const inModel = meta.in_model !== false;
+    cell.className = 'clf-cell' + (inModel ? '' : ' not-in-model');
     const label = document.createElement('label');
     label.className = 'clf-label';
     label.textContent = name.trim();
+    label.title = inModel ? 'Used by model' : 'Not a model feature';
     cell.appendChild(label);
     if (meta.type === 'numeric') {
       const inp = document.createElement('input');
@@ -830,6 +832,35 @@ function classifierFillDefaults() {
       }
     }
   });
+}
+
+function classifierLoadCSV(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const nameEl = document.getElementById('clf-csv-name');
+  nameEl.textContent = 'Uploading ' + file.name + '…';
+  const formData = new FormData();
+  formData.append('file', file);
+  fetch('/api/classifier/upload-csv', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+      input.value = '';
+      if (!data.success) {
+        nameEl.textContent = 'Error: ' + data.error;
+        toast('error', 'Load CSV', data.error);
+        return;
+      }
+      classifierFeatures = data.features;
+      classifierLoaded = true;
+      renderClassifierForm(data.features);
+      nameEl.textContent = file.name + ' (' + data.count + ' features)';
+      toast('success', 'CSV Loaded', file.name + ' — ' + data.count + ' features loaded');
+    })
+    .catch(() => {
+      nameEl.textContent = 'Upload failed';
+      toast('error', 'Load CSV', 'Upload failed');
+      input.value = '';
+    });
 }
 function saveCapture() {
   const data = JSON.stringify(state.packets.slice(-500), null, 2);

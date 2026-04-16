@@ -10,7 +10,7 @@ from flask_socketio import SocketIO, emit
 import netifaces
 from rules import load_rules, verify_rules
 from signature import Signature
-from classifier import get_model, get_feature_info, predict_single
+from classifier import get_model, get_feature_info, predict_single, feature_info_from_csv
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'ids-dashboard-secret'
@@ -464,6 +464,20 @@ def api_classifier_predict():
         data = request.json or {}
         result = predict_single(data)
         return jsonify({'success': True, **result})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/classifier/upload-csv', methods=['POST'])
+def api_classifier_upload_csv():
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'No file uploaded'})
+        f = request.files['file']
+        if not f.filename.lower().endswith('.csv'):
+            return jsonify({'success': False, 'error': 'Only CSV files are supported'})
+        info = feature_info_from_csv(f.stream)
+        return jsonify({'success': True, 'features': info, 'filename': f.filename, 'count': len(info)})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 

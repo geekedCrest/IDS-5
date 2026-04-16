@@ -797,6 +797,17 @@ body[data-threat='critical']::after {
   width: 100%; box-sizing: border-box;
 }
 .clf-input:focus { border-color: var(--accent); outline: none; }
+.classifier-toolbar { display: flex; align-items: center; gap: 10px; padding: 6px 0 8px 0; }
+.clf-csv-label {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: 4px; font-size: 12px; cursor: pointer;
+  background: var(--bg2); border: 1px solid var(--border); color: var(--text2);
+  transition: border-color 0.15s, color 0.15s;
+}
+.clf-csv-label:hover { border-color: var(--accent); color: var(--accent); }
+.clf-csv-name { font-size: 11px; color: var(--text3); font-style: italic; }
+.clf-cell.not-in-model .clf-label { color: var(--text3); }
+.clf-cell.not-in-model .clf-input { opacity: 0.55; }
 .classifier-actions { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--border); }
 .classifier-result { font-size: 13px; font-weight: 600; margin-left: auto; }
 .pred-benign { color: #4caf50; }

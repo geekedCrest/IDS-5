@@ -264,6 +264,14 @@
         <div class="classifier-form-wrap" id="classifier-form-wrap">
           <div class="empty-state">Loading features...</div>
         </div>
+        <div class="classifier-toolbar">
+          <label class="clf-csv-label" title="Load any CSV to update feature fields">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM8 17v-2h8v2H8zm0-4v-2h8v2H8z"/></svg>
+            Load CSV
+            <input type="file" id="clf-csv-input" accept=".csv" style="display:none" onchange="classifierLoadCSV(this)">
+          </label>
+          <span class="clf-csv-name" id="clf-csv-name">Using default features</span>
+        </div>
         <div class="classifier-actions">
           <button class="btn-sm btn-accent" onclick="classifierPredict()">Predict</button>
           <button class="btn-sm" onclick="classifierClear()">Clear</button>

@@ -51,6 +51,51 @@ def get_feature_info():
     return info
 
 
+def feature_info_from_csv(file_stream, nrows=2000):
+    """Extract feature info from any uploaded CSV, aligned to model features where possible."""
+    model = get_model()
+    model_features = list(model.feature_names_in_)
+
+    df = pd.read_csv(file_stream, nrows=nrows, low_memory=False, on_bad_lines='skip')
+
+    # Drop target-like columns
+    for col in ('Label', ' Label', 'label', 'Predicted_Label'):
+        if col in df.columns:
+            df = df.drop(columns=[col])
+
+    info = {}
+    # Prefer model feature order; fall back to CSV column order for extra cols
+    all_cols = []
+    for c in model_features:
+        if c in df.columns:
+            all_cols.append(c)
+    for c in df.columns:
+        if c not in all_cols:
+            all_cols.append(c)
+
+    for col in all_cols:
+        if col not in df.columns:
+            info[col] = {'type': 'numeric', 'median': 0.0, 'in_model': col in model_features}
+            continue
+        in_model = col in model_features
+        if pd.api.types.is_numeric_dtype(df[col]):
+            info[col] = {
+                'type': 'numeric',
+                'median': float(df[col].median()) if not df[col].dropna().empty else 0.0,
+                'in_model': in_model,
+            }
+        else:
+            vals = df[col].dropna().unique().tolist()[:50]
+            mode_val = str(df[col].mode().iloc[0]) if not df[col].mode().empty else ''
+            info[col] = {
+                'type': 'categorical',
+                'values': [str(v) for v in vals],
+                'mode': mode_val,
+                'in_model': in_model,
+            }
+    return info
+
+
 def predict_single(row_dict):
     model = get_model()
     feature_names = list(model.feature_names_in_)
