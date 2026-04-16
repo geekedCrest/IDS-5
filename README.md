@@ -6,12 +6,6 @@ A Python/Flask-based Network Intrusion Detection System (IDS) with a Wireshark-i
 
 ## How to Run
 
-### On Replit
-
-Click the **Run** button. The server starts automatically and the dashboard opens in the preview pane.
-
-### Locally
-
 **Requirements:** Python 3.9+
 
 ```bash
