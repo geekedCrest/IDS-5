@@ -87,7 +87,7 @@ def load_rules(filename: str) -> List[Signature]:
             if not line or line.startswith("#"):
                 continue
             try:
-                sig = Signature.from_snort_rule(line)
+                sig = Signature(line)
                 rules.append(sig)
             except Exception as e:
                 print(f"[!] Failed to parse rule at line {line_num}: {line} ({e})")
@@ -106,7 +106,7 @@ def verify_rules(rule_lines: List[str]) -> List[Signature]:
         if not text:
             raise ValueError(f'Empty rule at position {idx}')
         try:
-            parsed_rules.append(Signature.from_snort_rule(text))
+            parsed_rules.append(Signature(text))
         except Exception as e:
             raise ValueError(f'Invalid rule at position {idx}: {e}') from e
     return parsed_rules

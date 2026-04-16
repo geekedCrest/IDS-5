@@ -41,8 +41,13 @@ A Python-based network IDS with a modern Wireshark-inspired web dashboard.
 
 ## Dependencies
 - `flask` + `flask-socketio` + `eventlet` — Web server and real-time updates
-- `scapy>=2.4.1` — Packet structures and parsing
-- `netifaces==0.10.7` — Network interface info
+- `scapy>=2.4.1` — Packet structures and parsing (do NOT install scapy-python3, it conflicts)
+- `netifaces>=0.10.9` — Network interface info
+
+## Replit Migration Notes
+- `scapy-python3` must NOT be installed — it overrides `scapy` and breaks imports
+- `rules.py` uses `Signature(line)` constructor (not `Signature.from_snort_rule`)
+- `requirements.txt` cleaned of duplicates and the conflicting `scapy-python3` entry
 
 ## Workflow
 - **Start application** (webview, port 5000): `python3 app.py`
