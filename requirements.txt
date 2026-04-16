@@ -7,3 +7,13 @@ joblib
 numpy
 pandas
 scikit-learn
+eventlet
+flask
+flask-socketio
+joblib
+netifaces
+numpy
+pandas
+scapy
+scapy-python3
+scikit-learn
