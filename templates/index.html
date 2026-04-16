@@ -272,6 +272,20 @@
           </label>
           <span class="clf-csv-name" id="clf-csv-name">Using default features</span>
         </div>
+        <div class="clf-upload-progress" id="clf-upload-progress" style="display:none">
+          <div class="clf-prog-header">
+            <span class="clf-prog-filename" id="clf-prog-filename"></span>
+            <span class="clf-prog-status" id="clf-prog-status"></span>
+          </div>
+          <div class="clf-prog-bar-wrap">
+            <div class="clf-prog-bar" id="clf-prog-bar"></div>
+          </div>
+          <div class="clf-prog-stats">
+            <span id="clf-prog-transferred"></span>
+            <span id="clf-prog-rows"></span>
+            <span id="clf-prog-remaining"></span>
+          </div>
+        </div>
         <div class="classifier-actions">
           <button class="btn-sm btn-accent" onclick="classifierPredict()">Predict</button>
           <button class="btn-sm" onclick="classifierClear()">Clear</button>

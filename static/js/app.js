@@ -837,30 +837,97 @@ function classifierFillDefaults() {
 function classifierLoadCSV(input) {
   const file = input.files[0];
   if (!file) return;
-  const nameEl = document.getElementById('clf-csv-name');
-  nameEl.textContent = 'Uploading ' + file.name + '…';
+  input.value = '';
+
+  const totalBytes = file.size;
+  const totalGB = totalBytes / (1024 ** 3);
+  const AVG_BYTES_PER_ROW = 220;
+
+  const nameEl    = document.getElementById('clf-csv-name');
+  const progWrap  = document.getElementById('clf-upload-progress');
+  const progBar   = document.getElementById('clf-prog-bar');
+  const progFile  = document.getElementById('clf-prog-filename');
+  const progStat  = document.getElementById('clf-prog-status');
+  const progXfer  = document.getElementById('clf-prog-transferred');
+  const progRows  = document.getElementById('clf-prog-rows');
+  const progLeft  = document.getElementById('clf-prog-remaining');
+
+  function fmtBytes(b) {
+    if (b >= 1024 ** 3) return (b / 1024 ** 3).toFixed(2) + ' GB';
+    if (b >= 1024 ** 2) return (b / 1024 ** 2).toFixed(1) + ' MB';
+    return (b / 1024).toFixed(0) + ' KB';
+  }
+  function fmtRows(b) {
+    const r = Math.floor(b / AVG_BYTES_PER_ROW);
+    return r >= 1000 ? (r / 1000).toFixed(1) + 'k' : r;
+  }
+
+  nameEl.textContent = 'Uploading…';
+  progFile.textContent = file.name;
+  progStat.textContent = 'Uploading…';
+  progBar.style.width = '0%';
+  progBar.classList.remove('prog-done', 'prog-analyzing');
+  progWrap.style.display = 'block';
+
+  const xhr = new XMLHttpRequest();
+
+  xhr.upload.addEventListener('progress', e => {
+    if (!e.lengthComputable) return;
+    const pct = (e.loaded / e.total) * 100;
+    const remaining = e.total - e.loaded;
+    progBar.style.width = pct.toFixed(1) + '%';
+    progStat.textContent = pct.toFixed(1) + '%';
+    progXfer.textContent = fmtBytes(e.loaded) + ' / ' + fmtBytes(e.total);
+    progRows.textContent = '~' + fmtRows(e.loaded) + ' rows sent';
+    progLeft.textContent = fmtBytes(remaining) + ' remaining';
+  });
+
+  xhr.upload.addEventListener('load', () => {
+    progBar.style.width = '100%';
+    progBar.classList.add('prog-analyzing');
+    progStat.textContent = 'Analyzing…';
+    progXfer.textContent = fmtBytes(totalBytes) + ' uploaded';
+    progRows.textContent = 'Reading rows…';
+    progLeft.textContent = '';
+  });
+
+  xhr.addEventListener('load', () => {
+    let data;
+    try { data = JSON.parse(xhr.responseText); } catch { data = { success: false, error: 'Invalid response' }; }
+    if (!data.success) {
+      progStat.textContent = 'Error';
+      progBar.classList.remove('prog-analyzing');
+      progBar.classList.add('prog-error');
+      nameEl.textContent = 'Load failed';
+      toast('error', 'Load CSV', data.error);
+      return;
+    }
+    progBar.style.width = '100%';
+    progBar.classList.remove('prog-analyzing');
+    progBar.classList.add('prog-done');
+    progStat.textContent = 'Done';
+    progXfer.textContent = fmtBytes(totalBytes);
+    progRows.textContent = data.count + ' features loaded';
+    progLeft.textContent = '';
+    nameEl.textContent = file.name + ' (' + data.count + ' features)';
+    classifierFeatures = data.features;
+    classifierLoaded = true;
+    renderClassifierForm(data.features);
+    toast('success', 'CSV Loaded', file.name + ' — ' + data.count + ' features');
+    setTimeout(() => { progWrap.style.display = 'none'; }, 4000);
+  });
+
+  xhr.addEventListener('error', () => {
+    progStat.textContent = 'Upload failed';
+    progBar.classList.add('prog-error');
+    nameEl.textContent = 'Upload failed';
+    toast('error', 'Load CSV', 'Network error during upload');
+  });
+
   const formData = new FormData();
   formData.append('file', file);
-  fetch('/api/classifier/upload-csv', { method: 'POST', body: formData })
-    .then(r => r.json())
-    .then(data => {
-      input.value = '';
-      if (!data.success) {
-        nameEl.textContent = 'Error: ' + data.error;
-        toast('error', 'Load CSV', data.error);
-        return;
-      }
-      classifierFeatures = data.features;
-      classifierLoaded = true;
-      renderClassifierForm(data.features);
-      nameEl.textContent = file.name + ' (' + data.count + ' features)';
-      toast('success', 'CSV Loaded', file.name + ' — ' + data.count + ' features loaded');
-    })
-    .catch(() => {
-      nameEl.textContent = 'Upload failed';
-      toast('error', 'Load CSV', 'Upload failed');
-      input.value = '';
-    });
+  xhr.open('POST', '/api/classifier/upload-csv');
+  xhr.send(formData);
 }
 function saveCapture() {
   const data = JSON.stringify(state.packets.slice(-500), null, 2);
