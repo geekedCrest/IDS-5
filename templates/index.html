@@ -112,9 +112,9 @@
     <svg viewBox="0 0 24 24"><path d="M3 3v18h18v-2H5V3H3zm4 14l4-4 4 4 4-8"/></svg>
     Stats
   </button>
-  <button class="tb-btn" onclick="openFolder()" title="Open Folder">
-    <svg viewBox="0 0 24 24"><path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z"/></svg>
-    Folder
+  <button class="tb-btn" onclick="showTab('classifier'); loadClassifierTab()" title="Packet Classifier">
+    <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+    Classify
   </button>
   <div class="tb-spacer"></div>
   <div class="iface-selector">
@@ -154,6 +154,7 @@
         Alerts <span class="badge" id="badge-alerts">0</span>
       </button>
       <button class="tab-btn" data-tab="stats" onclick="showTab('stats')">Statistics</button>
+      <button class="tab-btn" data-tab="classifier" onclick="showTab('classifier'); loadClassifierTab()">Classifier</button>
       <button class="tab-btn" data-tab="rules" onclick="showTab('rules'); loadRulesTab()">Rules</button>
     </div>
 
@@ -249,6 +250,29 @@
             <div class="counter-item"><span class="cnt-val" id="cnt-dns">0</span><span class="cnt-lbl">DNS</span></div>
             <div class="counter-item"><span class="cnt-val" id="cnt-other">0</span><span class="cnt-lbl">Other</span></div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Classifier Tab -->
+    <div class="tab-content" id="tab-classifier">
+      <div class="classifier-panel">
+        <div class="classifier-header">
+          <h3>Packet Details &mdash; Classifier</h3>
+          <p class="classifier-subtitle">Fill in packet features to classify traffic using the ML model</p>
+        </div>
+        <div class="classifier-form-wrap" id="classifier-form-wrap">
+          <div class="empty-state">Loading features...</div>
+        </div>
+        <div class="classifier-actions">
+          <button class="btn-sm btn-accent" onclick="classifierPredict()">Predict</button>
+          <button class="btn-sm" onclick="classifierClear()">Clear</button>
+          <button class="btn-sm" onclick="classifierFillDefaults()">Fill Defaults</button>
+          <span class="classifier-result" id="classifier-result"></span>
+        </div>
+        <div class="classifier-probs" id="classifier-probs" style="display:none">
+          <h4>Prediction Probabilities</h4>
+          <div class="prob-bars" id="prob-bars"></div>
         </div>
       </div>
     </div>

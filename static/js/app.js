@@ -695,20 +695,141 @@ function setInterface(name) {
 }
 
 function openFile()  { toast('info', '📂 Open File', 'File dialog not available in web mode'); }
-function openFolder() {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.webkitdirectory = true;
-  input.multiple = true;
-  input.accept = '.pcap,.pcapng,.json,.log';
-  input.onchange = function(e) {
-    const files = Array.from(e.target.files);
-    if (!files.length) return;
-    const names = files.slice(0, 5).map(f => f.name).join(', ');
-    const extra = files.length > 5 ? ` +${files.length - 5} more` : '';
-    toast('success', '📁 Folder Loaded', `${files.length} file(s): ${names}${extra}`);
-  };
-  input.click();
+
+let classifierFeatures = null;
+let classifierLoaded = false;
+
+function loadClassifierTab() {
+  if (classifierLoaded) return;
+  fetch('/api/classifier/features')
+    .then(r => r.json())
+    .then(data => {
+      if (!data.success) { toast('error', 'Classifier', data.error); return; }
+      classifierFeatures = data.features;
+      classifierLoaded = true;
+      renderClassifierForm(data.features);
+    })
+    .catch(e => toast('error', 'Classifier', 'Failed to load features'));
+}
+
+function renderClassifierForm(features) {
+  const wrap = document.getElementById('classifier-form-wrap');
+  wrap.innerHTML = '';
+  const grid = document.createElement('div');
+  grid.className = 'classifier-grid';
+  const keys = Object.keys(features);
+  keys.forEach(name => {
+    const meta = features[name];
+    const cell = document.createElement('div');
+    cell.className = 'clf-cell';
+    const label = document.createElement('label');
+    label.className = 'clf-label';
+    label.textContent = name.trim();
+    cell.appendChild(label);
+    if (meta.type === 'numeric') {
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.className = 'clf-input';
+      inp.dataset.field = name;
+      inp.dataset.type = 'numeric';
+      inp.placeholder = `median: ${meta.median}`;
+      cell.appendChild(inp);
+    } else {
+      const sel = document.createElement('select');
+      sel.className = 'clf-input';
+      sel.dataset.field = name;
+      sel.dataset.type = 'categorical';
+      const opt0 = document.createElement('option');
+      opt0.value = '';
+      opt0.textContent = '-- select --';
+      sel.appendChild(opt0);
+      (meta.values || []).forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = v;
+        if (v === meta.mode) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      cell.appendChild(sel);
+    }
+    grid.appendChild(cell);
+  });
+  wrap.appendChild(grid);
+}
+
+function classifierPredict() {
+  if (!classifierFeatures) { toast('error', 'Classifier', 'Features not loaded yet'); return; }
+  const inputs = document.querySelectorAll('#classifier-form-wrap .clf-input');
+  const row = {};
+  inputs.forEach(inp => {
+    const field = inp.dataset.field;
+    const val = inp.value.trim();
+    if (val !== '') row[field] = val;
+  });
+  document.getElementById('classifier-result').textContent = 'Predicting...';
+  fetch('/api/classifier/predict', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(row)
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.success) {
+        document.getElementById('classifier-result').textContent = 'Error: ' + data.error;
+        toast('error', 'Prediction Failed', data.error);
+        return;
+      }
+      const resultEl = document.getElementById('classifier-result');
+      resultEl.textContent = 'Predicted: ' + data.prediction;
+      const isBenign = String(data.prediction).toLowerCase() === 'benign';
+      resultEl.className = 'classifier-result pred-' + (isBenign ? 'benign' : 'threat');
+      if (data.probabilities) {
+        const probDiv = document.getElementById('classifier-probs');
+        const barsDiv = document.getElementById('prob-bars');
+        probDiv.style.display = 'block';
+        barsDiv.innerHTML = '';
+        data.probabilities.forEach(p => {
+          const bar = document.createElement('div');
+          bar.className = 'prob-row';
+          const pBenign = String(p.class).toLowerCase() === 'benign';
+          bar.innerHTML = `<span class="prob-label">${p.class}</span>
+            <div class="prob-track"><div class="prob-fill ${pBenign ? 'fill-benign' : 'fill-threat'}" style="width:${Math.max(p.prob, 0.5)}%"></div></div>
+            <span class="prob-val">${p.prob}%</span>`;
+          barsDiv.appendChild(bar);
+        });
+      }
+      toast('success', 'Classification', 'Predicted: ' + data.prediction);
+    })
+    .catch(e => {
+      document.getElementById('classifier-result').textContent = 'Error';
+      toast('error', 'Prediction', 'Request failed');
+    });
+}
+
+function classifierClear() {
+  const inputs = document.querySelectorAll('#classifier-form-wrap .clf-input');
+  inputs.forEach(inp => {
+    if (inp.tagName === 'SELECT') inp.selectedIndex = 0;
+    else inp.value = '';
+  });
+  document.getElementById('classifier-result').textContent = '';
+  document.getElementById('classifier-probs').style.display = 'none';
+}
+
+function classifierFillDefaults() {
+  if (!classifierFeatures) return;
+  const inputs = document.querySelectorAll('#classifier-form-wrap .clf-input');
+  inputs.forEach(inp => {
+    const field = inp.dataset.field;
+    const meta = classifierFeatures[field];
+    if (!meta) return;
+    if (meta.type === 'numeric') inp.value = meta.median;
+    else if (meta.type === 'categorical' && meta.mode) {
+      for (let i = 0; i < inp.options.length; i++) {
+        if (inp.options[i].value === meta.mode) { inp.selectedIndex = i; break; }
+      }
+    }
+  });
 }
 function saveCapture() {
   const data = JSON.stringify(state.packets.slice(-500), null, 2);

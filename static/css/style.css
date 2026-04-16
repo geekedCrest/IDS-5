@@ -784,6 +784,33 @@ body[data-threat='critical']::after {
   }
 }
 
+/* ─── Classifier Tab ───────────────────────────────────────────────────── */
+.classifier-panel { padding: 16px; overflow-y: auto; max-height: calc(100vh - 200px); }
+.classifier-header h3 { margin: 0 0 4px 0; font-size: 15px; color: var(--text1); }
+.classifier-subtitle { margin: 0 0 12px 0; font-size: 12px; color: var(--text3); }
+.classifier-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 12px; margin-bottom: 14px; }
+.clf-cell { display: flex; flex-direction: column; }
+.clf-label { font-size: 11px; color: var(--text2); margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clf-input {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 4px;
+  color: var(--text1); padding: 5px 8px; font-size: 12px; font-family: var(--mono);
+  width: 100%; box-sizing: border-box;
+}
+.clf-input:focus { border-color: var(--accent); outline: none; }
+.classifier-actions { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--border); }
+.classifier-result { font-size: 13px; font-weight: 600; margin-left: auto; }
+.pred-benign { color: #4caf50; }
+.pred-threat { color: #f44336; }
+.classifier-probs { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); }
+.classifier-probs h4 { margin: 0 0 10px 0; font-size: 13px; color: var(--text2); }
+.prob-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.prob-label { font-size: 11px; color: var(--text2); width: 120px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prob-track { flex: 1; height: 16px; background: var(--bg2); border-radius: 3px; overflow: hidden; }
+.prob-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+.fill-benign { background: linear-gradient(90deg, #2e7d32, #4caf50); }
+.fill-threat { background: linear-gradient(90deg, #c62828, #f44336); }
+.prob-val { font-size: 11px; color: var(--text1); width: 50px; font-family: var(--mono); }
+
 /* ─── Scrollbars ────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg); }

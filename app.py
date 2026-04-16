@@ -10,6 +10,7 @@ from flask_socketio import SocketIO, emit
 import netifaces
 from rules import load_rules, verify_rules
 from signature import Signature
+from classifier import get_model, get_feature_info, predict_single
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'ids-dashboard-secret'
@@ -444,6 +445,27 @@ def api_stats():
         'traffic_history': state['traffic_history'][-30:],
         'status': _status(),
     })
+
+
+# ─── Classifier API ───────────────────────────────────────────────────────────
+
+@app.route('/api/classifier/features')
+def api_classifier_features():
+    try:
+        info = get_feature_info()
+        return jsonify({'success': True, 'features': info})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/classifier/predict', methods=['POST'])
+def api_classifier_predict():
+    try:
+        data = request.json or {}
+        result = predict_single(data)
+        return jsonify({'success': True, **result})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 
 # ─── WebSocket events ─────────────────────────────────────────────────────────

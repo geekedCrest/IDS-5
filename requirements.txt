@@ -3,5 +3,7 @@ scapy>=2.4.1
 eventlet
 flask
 flask-socketio
-scapy
-scapy-python3
+joblib
+numpy
+pandas
+scikit-learn
