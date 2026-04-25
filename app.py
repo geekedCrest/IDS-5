@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
+import eventlet
+eventlet.monkey_patch()
+
 import random
 import time
-import threading
 import json
 import os
 from datetime import datetime
@@ -80,6 +82,57 @@ def load_ids_rules(path='default.rules'):
 
 ids_rules = load_ids_rules('default.rules')
 
+# ─── Rule matching helpers ─────────────────────────────────────────────────────
+
+def _ip_match(rule_ip, actual_ip):
+    if rule_ip == 'any':
+        return True
+    if rule_ip.startswith('!'):
+        return rule_ip[1:] != actual_ip
+    return rule_ip == actual_ip
+
+
+def _port_match(rule_port, actual_port):
+    if rule_port == 'any':
+        return True
+    actual = str(actual_port)
+    rp = rule_port
+    negate = False
+    if rp.startswith('!'):
+        negate = True
+        rp = rp[1:]
+    if rp.startswith('[') and rp.endswith(']'):
+        try:
+            lo, hi = rp[1:-1].split('-')
+            in_range = int(lo) <= int(actual) <= int(hi)
+            return not in_range if negate else in_range
+        except (ValueError, IndexError):
+            return False
+    matches = (rp == actual)
+    return not matches if negate else matches
+
+
+def _proto_match(rule_proto, actual_proto):
+    if rule_proto in ('any', 'IP'):
+        return True
+    return rule_proto == actual_proto
+
+
+def _packet_matches_rule(rule, src_ip, dst_ip, proto, src_port, dst_port):
+    """Strict rule match: proto + both IPs + both ports must all match."""
+    if not _proto_match(rule.proto, proto):
+        return False
+    if not _ip_match(rule.src_ip, src_ip):
+        return False
+    if not _ip_match(rule.dst_ip, dst_ip):
+        return False
+    if not _port_match(rule.src_port, src_port):
+        return False
+    if not _port_match(rule.dst_port, dst_port):
+        return False
+    return True
+
+
 # ─── Packet simulation ─────────────────────────────────────────────────────────
 
 def _fmt_info(proto):
@@ -103,39 +156,21 @@ def _generate_packet():
         weights=[30, 20, 10, 15, 10, 3, 5, 3, 2, 2]
     )[0]
 
-    # Occasionally generate packets that will match rules
-    trigger_rule = random.random() < 0.12 and ids_rules
-
-    if trigger_rule:
-        rule = random.choice(ids_rules)
-        src_ip = rule.src_ip if rule.src_ip not in ('any',) and '!' not in rule.src_ip else random.choice(SAMPLE_IPS)
-        dst_ip = rule.dst_ip if rule.dst_ip not in ('any',) and '!' not in rule.dst_ip else random.choice(SAMPLE_IPS)
-        proto = rule.proto if rule.proto not in ('any', 'IP') else proto
-        src_port = rule.src_port if rule.src_port not in ('any',) and '!' not in rule.src_port and '[' not in rule.src_port else str(random.choice(COMMON_PORTS))
-        dst_port = rule.dst_port if rule.dst_port not in ('any',) and '!' not in rule.dst_port and '[' not in rule.dst_port else str(random.choice(COMMON_PORTS))
-    else:
-        src_ip = random.choice(SAMPLE_IPS)
-        dst_ip = random.choice(SAMPLE_IPS)
-        src_port = random.choice(COMMON_PORTS)
-        dst_port = random.choice(COMMON_PORTS)
+    src_ip = random.choice(SAMPLE_IPS)
+    dst_ip = random.choice(SAMPLE_IPS)
+    src_port = random.choice(COMMON_PORTS)
+    dst_port = random.choice(COMMON_PORTS)
 
     length = random.randint(40, 1500)
     state['packet_count'] += 1
     pkt_id = state['packet_count']
     ts = datetime.now().strftime('%H:%M:%S.%f')[:-3]
 
-    # Check against rules
+    # Check against rules — strict match on proto + IPs + ports
     is_alert = False
     matched_rule = None
     for rule in ids_rules:
-        r_src_ip = src_ip
-        r_dst_ip = dst_ip
-        r_src_port = str(src_port)
-        r_dst_port = str(dst_port)
-        r_proto = proto
-        if (rule.src_ip in ('any', r_src_ip) and
-            rule.dst_ip in ('any', r_dst_ip) and
-            rule.proto in ('any', 'IP', r_proto)):
+        if _packet_matches_rule(rule, src_ip, dst_ip, proto, src_port, dst_port):
             is_alert = True
             matched_rule = str(rule)
             break
@@ -292,8 +327,8 @@ def simulation_thread():
     traffic_tick = 0
     while True:
         if state['running'] and not state['paused']:
-            delay = random.uniform(0.05, 0.35)
-            time.sleep(delay)
+            delay = random.uniform(0.02, 0.18)
+            socketio.sleep(delay)
 
             pkt = _generate_packet()
             state['packets'].append(pkt)
@@ -346,7 +381,7 @@ def simulation_thread():
                     'status': _status(),
                 })
         else:
-            time.sleep(0.2)
+            socketio.sleep(0.2)
 
 
 def _status():
@@ -561,6 +596,5 @@ def on_load_rules(data):
 # ─── Entry point ──────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
-    t = threading.Thread(target=simulation_thread, daemon=True)
-    t.start()
+    socketio.start_background_task(simulation_thread)
     socketio.run(app, host='0.0.0.0', port=5000, debug=False)
