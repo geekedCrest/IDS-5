@@ -36,6 +36,11 @@ state = {
     'active_filter': '',
 }
 
+# Simulated traffic is synthetic, so any "alerts" produced from it are
+# inherently fake. Keep this False on the web dashboard. Real alerts come
+# from CLI mode (main.py) running on a live network interface.
+SIMULATE_ALERTS = False
+
 PROTOCOLS = ['TCP', 'UDP', 'ICMP', 'HTTP', 'DNS', 'ARP', 'TLS', 'SSH', 'FTP', 'SMTP']
 THREAT_LEVELS = ['LOW', 'LOW', 'LOW', 'LOW', 'MEDIUM', 'MEDIUM', 'HIGH', 'CRITICAL']
 
@@ -166,14 +171,17 @@ def _generate_packet():
     pkt_id = state['packet_count']
     ts = datetime.now().strftime('%H:%M:%S.%f')[:-3]
 
-    # Check against rules — strict match on proto + IPs + ports
+    # Check against rules — strict match on proto + IPs + ports.
+    # Skipped entirely when SIMULATE_ALERTS is False so the dashboard
+    # never produces synthetic intrusion alerts on simulated traffic.
     is_alert = False
     matched_rule = None
-    for rule in ids_rules:
-        if _packet_matches_rule(rule, src_ip, dst_ip, proto, src_port, dst_port):
-            is_alert = True
-            matched_rule = str(rule)
-            break
+    if SIMULATE_ALERTS:
+        for rule in ids_rules:
+            if _packet_matches_rule(rule, src_ip, dst_ip, proto, src_port, dst_port):
+                is_alert = True
+                matched_rule = str(rule)
+                break
 
     threat = 'CRITICAL' if is_alert else random.choices(
         ['LOW', 'LOW', 'LOW', 'MEDIUM', 'HIGH'],
@@ -345,7 +353,7 @@ def simulation_thread():
 
             socketio.emit('packet', pkt)
 
-            if pkt['is_alert']:
+            if SIMULATE_ALERTS and pkt['is_alert']:
                 alert = {
                     'id': state['alert_count'] + 1,
                     'ts': pkt['ts'],
@@ -365,12 +373,13 @@ def simulation_thread():
 
             traffic_tick += 1
             if traffic_tick % 20 == 0:
-                attack_alerts = _check_for_attacks(recent_packets)
-                for al in attack_alerts:
-                    state['alert_count'] += 1
-                    al['id'] = state['alert_count']
-                    state['alerts'].append(al)
-                    socketio.emit('alert', al)
+                if SIMULATE_ALERTS:
+                    attack_alerts = _check_for_attacks(recent_packets)
+                    for al in attack_alerts:
+                        state['alert_count'] += 1
+                        al['id'] = state['alert_count']
+                        state['alerts'].append(al)
+                        socketio.emit('alert', al)
 
                 traffic_point = {
                     'ts': datetime.now().strftime('%H:%M:%S'),
