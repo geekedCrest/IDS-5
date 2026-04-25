@@ -307,15 +307,20 @@ def _check_for_attacks(packets_window):
         key = f'{src}->{dst}'
         dst_port_count[key] = dst_port_count.get(key, 0) + 1
 
+    # DoS only triggers when one source dominates the recent window
+    # (>60% of last 100 packets) — avoids false positives from uniform
+    # random traffic across a small IP pool.
+    total = len(packets_window) or 1
+    threshold = max(60, int(total * 0.6))
     for src, cnt in src_count.items():
-        if cnt > 20:
+        if cnt > threshold:
             alerts.append({
                 'type': 'DoS Attack',
                 'threat': 'CRITICAL',
                 'src': src,
                 'dst': 'multiple',
                 'ts': datetime.now().strftime('%H:%M:%S'),
-                'detail': f'{cnt} packets from {src} in last window',
+                'detail': f'{cnt}/{total} packets from {src} in last window',
             })
     return alerts
 
