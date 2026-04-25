@@ -688,10 +688,17 @@ def api_interfaces():
     ifaces = []
     for name in netifaces.interfaces():
         addrs = netifaces.ifaddresses(name)
-        ipv4 = addrs.get(netifaces.AF_INET, [{}])[0].get('addr', '')
+        ipv4_list = [a.get('addr', '') for a in addrs.get(netifaces.AF_INET, []) if a.get('addr')]
+        ipv6_list = [a.get('addr', '').split('%')[0] for a in addrs.get(netifaces.AF_INET6, []) if a.get('addr')]
+        mac = addrs.get(netifaces.AF_LINK, [{}])[0].get('addr', '') if hasattr(netifaces, 'AF_LINK') else ''
+        is_loopback = name in ('lo', 'lo0') or any(ip.startswith('127.') for ip in ipv4_list) or '::1' in ipv6_list
         ifaces.append({
             'name': name,
-            'ip': ipv4,
+            'ip': ipv4_list[0] if ipv4_list else '',
+            'ipv4': ipv4_list,
+            'ipv6': ipv6_list,
+            'mac': mac,
+            'loopback': is_loopback,
             'active': name == state['interface'],
         })
     return jsonify(ifaces)

@@ -117,12 +117,11 @@
     Classify
   </button>
   <div class="tb-spacer"></div>
-  <div class="iface-selector">
+  <button class="iface-selector" onclick="openInterfacePicker()" title="Select capture interface">
     <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="color:var(--text3)"><path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/></svg>
-    <select id="iface-select" onchange="setInterface(this.value)" title="Select network interface">
-      <option value="">Loading…</option>
-    </select>
-  </div>
+    <span id="iface-current-label">Loading…</span>
+    <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor" style="color:var(--text3)"><path d="M7 10l5 5 5-5z"/></svg>
+  </button>
   <div class="capture-indicator" id="capture-indicator">
     <span class="ci-dot" id="ci-dot"></span>
     <span id="ci-label">Idle</span>
@@ -407,6 +406,37 @@
         <div class="me-item" onclick="useExample(this)">ICMP 1.1.1.1:any -&gt; 192.168.178.22:any *</div>
         <div class="me-item" onclick="useExample(this)">UDP any:[500-510] -&gt; any:any *</div>
         <div class="me-item" onclick="useExample(this)">TCP !192.168.0.1:[0-8000] &lt;&gt; 127.0.0.1:!8080 *</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Interface Picker Modal (Wireshark-style) ──────────────────────────── -->
+<div class="modal-overlay" id="modal-iface" onclick="closeModal('modal-iface')">
+  <div class="modal modal-iface" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <span>Capture Interfaces</span>
+      <button class="modal-close" onclick="closeModal('modal-iface')">✕</button>
+    </div>
+    <div class="modal-body" style="padding: 0;">
+      <div class="iface-filterbar">
+        <input type="text" id="iface-filter" placeholder="Search interfaces…"
+               oninput="filterInterfaceList(this.value)" />
+        <button class="btn-link" onclick="loadInterfaces(true)" title="Refresh">↻</button>
+      </div>
+      <div class="iface-table-head">
+        <div class="ith-name">Interface</div>
+        <div class="ith-traffic">Traffic</div>
+        <div class="ith-addrs">Addresses</div>
+      </div>
+      <div class="iface-list" id="iface-list">
+        <div class="iface-empty">Loading interfaces…</div>
+      </div>
+      <div class="iface-footer">
+        <span id="iface-count" class="iface-count">—</span>
+        <button class="btn-accent" id="iface-start-btn" onclick="confirmInterfaceSelection()" disabled>
+          Start Capture
+        </button>
       </div>
     </div>
   </div>

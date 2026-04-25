@@ -185,16 +185,102 @@ body[data-threat='critical']::after {
 .iface-selector {
   display: flex; align-items: center; gap: 6px;
   background: var(--bg3); border: 1px solid var(--border2);
-  border-radius: 5px; padding: 3px 8px; margin-right: 8px;
-}
-.iface-selector select {
-  background: transparent; border: none; outline: none;
+  border-radius: 5px; padding: 4px 10px; margin-right: 8px;
   color: var(--text); font-size: 12px; cursor: pointer;
   font-family: 'Cascadia Code', monospace;
-  padding: 0 2px;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
 }
-.iface-selector select option { background: var(--bg2); color: var(--text); }
-.iface-selector select:hover { color: var(--accent2); }
+.iface-selector:hover { background: var(--bg4); border-color: var(--accent); color: var(--accent2); }
+.iface-selector #iface-current-label { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ─── Wireshark-style interface picker ──────────────────────────────────── */
+.modal-iface { width: 820px; max-width: 95vw; }
+.iface-filterbar {
+  display: flex; gap: 8px; padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+}
+.iface-filterbar input {
+  flex: 1; background: var(--bg); border: 1px solid var(--border2);
+  border-radius: 4px; padding: 6px 10px; color: var(--text);
+  font-family: 'Cascadia Code', monospace; font-size: 12px; outline: none;
+}
+.iface-filterbar input:focus { border-color: var(--accent); }
+.iface-filterbar button {
+  background: var(--bg3); border: 1px solid var(--border2); color: var(--text2);
+  border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 14px;
+}
+.iface-filterbar button:hover { color: var(--accent2); border-color: var(--accent); }
+
+.iface-table-head {
+  display: grid; grid-template-columns: 280px 80px 1fr;
+  gap: 12px; padding: 8px 18px;
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px;
+  color: var(--text3); background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+}
+
+.iface-list {
+  max-height: 380px; overflow-y: auto;
+  background: var(--bg);
+}
+.iface-row {
+  display: grid; grid-template-columns: 280px 80px 1fr;
+  gap: 12px; padding: 10px 18px;
+  align-items: center; cursor: pointer;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  transition: background 0.08s;
+}
+.iface-row:hover { background: rgba(86,156,214,0.08); }
+.iface-row.selected { background: rgba(86,156,214,0.18); }
+.iface-row.selected .ifr-name { color: var(--accent2); }
+.iface-name-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ifr-icon {
+  width: 18px; height: 18px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text3);
+}
+.iface-row.selected .ifr-icon { color: var(--accent); }
+.ifr-name {
+  font-family: 'Cascadia Code', monospace; font-size: 13px;
+  color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ifr-badge {
+  display: inline-block; padding: 1px 6px; border-radius: 3px;
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px;
+  background: var(--bg3); color: var(--text3); margin-left: 4px;
+}
+.ifr-badge.active { background: rgba(48,140,86,0.25); color: var(--green); }
+.ifr-badge.loop { background: rgba(210,153,34,0.18); color: var(--yellow); }
+
+.ifr-traffic {
+  font-family: 'Cascadia Code', monospace; font-size: 11px;
+  color: var(--text3);
+  height: 14px;
+  display: flex; align-items: center;
+}
+.ifr-spark {
+  width: 60px; height: 14px;
+  background: linear-gradient(90deg, transparent, rgba(86,156,214,0.15));
+  border-radius: 2px;
+}
+.ifr-addrs {
+  font-family: 'Cascadia Code', monospace; font-size: 11px;
+  color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ifr-addrs .addr-v4 { color: var(--accent2); }
+.ifr-addrs .addr-v6 { color: var(--text3); margin-left: 8px; }
+.ifr-addrs .addr-none { color: var(--text3); font-style: italic; }
+
+.iface-empty {
+  padding: 40px; text-align: center; color: var(--text3); font-size: 13px;
+}
+.iface-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 18px; border-top: 1px solid var(--border);
+  background: var(--bg2);
+}
+.iface-count { font-size: 11px; color: var(--text3); }
 
 .capture-indicator { display: flex; align-items: center; gap: 6px; padding: 0 8px; }
 .ci-dot {

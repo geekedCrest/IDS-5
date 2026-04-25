@@ -677,27 +677,181 @@ function toggleTheme() {
   document.documentElement.classList.toggle('light');
 }
 
-// ─── File ops (mock) ──────────────────────────────────────────────────────────
-async function loadInterfaces() {
+// ─── Interface picker (Wireshark-style) ──────────────────────────────────────
+let _interfaces = [];
+let _selectedIface = null;
+
+async function loadInterfaces(showToast = false) {
   try {
     const resp = await fetch('/api/interfaces');
-    const ifaces = await resp.json();
-    const sel = el('iface-select');
-    sel.innerHTML = ifaces.map(i => `
-      <option value="${escHtml(i.name)}" ${i.active ? 'selected' : ''}>
-        ${escHtml(i.name)}${i.ip ? ' (' + escHtml(i.ip) + ')' : ''}
-      </option>
-    `).join('');
+    _interfaces = await resp.json();
+    const label = el('iface-current-label');
+    const active = _interfaces.find(i => i.active);
+    if (active) {
+      label.textContent = active.ip ? `${active.name} (${active.ip})` : active.name;
+    } else if (_interfaces.length) {
+      label.textContent = _interfaces[0].name;
+    } else {
+      label.textContent = 'no interfaces';
+    }
+    renderInterfaceList(_interfaces);
+    if (showToast) toast('info', '↻ Refreshed', `${_interfaces.length} interfaces found`);
   } catch (e) {
     console.warn('Could not load interfaces:', e);
+    el('iface-current-label').textContent = 'no interfaces';
   }
+}
+
+function ifaceIcon(iface) {
+  if (iface.loopback) {
+    return '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm0 14a6 6 0 1 1 0-12 6 6 0 0 1 0 12zm-1-9h2v2h-2zm0 4h2v4h-2z"/></svg>';
+  }
+  const n = (iface.name || '').toLowerCase();
+  if (n.includes('wl') || n.includes('wifi') || n.includes('wlan')) {
+    return '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/></svg>';
+  }
+  return '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M3 5h18v10H3zm0 12h18v2H3zm6-3h6v-2H9z"/></svg>';
+}
+
+function renderInterfaceList(list) {
+  const container = el('iface-list');
+  if (!list.length) {
+    container.innerHTML = '<div class="iface-empty">No interfaces found.</div>';
+    el('iface-count').textContent = '0 interfaces';
+    return;
+  }
+  // Build rows as DOM nodes so interface names never touch innerHTML interpolation.
+  container.innerHTML = '';
+  for (const i of list) {
+    const row = document.createElement('div');
+    row.className = 'iface-row' + (_selectedIface === i.name ? ' selected' : '');
+    row.dataset.iface = i.name;
+
+    const nameCell = document.createElement('div');
+    nameCell.className = 'iface-name-cell';
+    const iconSpan = document.createElement('span');
+    iconSpan.className = 'ifr-icon';
+    iconSpan.innerHTML = ifaceIcon(i);
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'ifr-name';
+    nameSpan.textContent = i.name;
+    nameCell.append(iconSpan, nameSpan);
+    if (i.active) {
+      const b = document.createElement('span');
+      b.className = 'ifr-badge active';
+      b.textContent = 'Active';
+      nameCell.appendChild(b);
+    }
+    if (i.loopback) {
+      const b = document.createElement('span');
+      b.className = 'ifr-badge loop';
+      b.textContent = 'Loopback';
+      nameCell.appendChild(b);
+    }
+
+    const trafficCell = document.createElement('div');
+    trafficCell.className = 'ifr-traffic';
+    const spark = document.createElement('div');
+    spark.className = 'ifr-spark';
+    trafficCell.appendChild(spark);
+
+    const addrCell = document.createElement('div');
+    addrCell.className = 'ifr-addrs';
+    const v4 = (i.ipv4 || []);
+    const v6 = (i.ipv6 || []).slice(0, 1);
+    if (!v4.length && !v6.length) {
+      const s = document.createElement('span');
+      s.className = 'addr-none';
+      s.textContent = 'No address';
+      addrCell.appendChild(s);
+    } else {
+      for (const a of v4) {
+        const s = document.createElement('span');
+        s.className = 'addr-v4';
+        s.textContent = a;
+        addrCell.appendChild(s);
+      }
+      for (const a of v6) {
+        const s = document.createElement('span');
+        s.className = 'addr-v6';
+        s.textContent = a;
+        addrCell.appendChild(s);
+      }
+    }
+
+    row.append(nameCell, trafficCell, addrCell);
+    container.appendChild(row);
+  }
+  el('iface-count').textContent = `${list.length} interface${list.length === 1 ? '' : 's'}`;
+}
+
+// Event delegation — works no matter what characters are in interface names.
+document.addEventListener('DOMContentLoaded', () => {
+  const list = el('iface-list');
+  if (!list) return;
+  list.addEventListener('click', (e) => {
+    const row = e.target.closest('.iface-row');
+    if (row && row.dataset.iface) selectInterfaceRow(row.dataset.iface);
+  });
+  list.addEventListener('dblclick', (e) => {
+    const row = e.target.closest('.iface-row');
+    if (row && row.dataset.iface) {
+      selectInterfaceRow(row.dataset.iface);
+      confirmInterfaceSelection(true);
+    }
+  });
+});
+
+function selectInterfaceRow(name) {
+  _selectedIface = name;
+  document.querySelectorAll('.iface-row').forEach(r => {
+    r.classList.toggle('selected', r.dataset.iface === name);
+  });
+  const btn = el('iface-start-btn');
+  if (btn) btn.disabled = false;
+}
+
+function filterInterfaceList(q) {
+  const needle = (q || '').trim().toLowerCase();
+  if (!needle) return renderInterfaceList(_interfaces);
+  const filtered = _interfaces.filter(i => {
+    if (i.name.toLowerCase().includes(needle)) return true;
+    if ((i.ipv4 || []).some(a => a.toLowerCase().includes(needle))) return true;
+    if ((i.ipv6 || []).some(a => a.toLowerCase().includes(needle))) return true;
+    return false;
+  });
+  renderInterfaceList(filtered);
+}
+
+function openInterfacePicker() {
+  const active = _interfaces.find(i => i.active);
+  _selectedIface = active ? active.name : (_interfaces[0] && _interfaces[0].name) || null;
+  renderInterfaceList(_interfaces);
+  el('iface-start-btn').disabled = !_selectedIface;
+  const fi = el('iface-filter');
+  if (fi) fi.value = '';
+  showModal('modal-iface');
+}
+
+function confirmInterfaceSelection(autoStart = true) {
+  if (!_selectedIface) return;
+  setInterface(_selectedIface);
+  closeModal('modal-iface');
+  if (autoStart) startCapture();
 }
 
 function setInterface(name) {
   if (!name) return;
   socket.emit('set_interface', { interface: name });
+  const i = _interfaces.find(x => x.name === name);
+  if (i) {
+    _interfaces.forEach(x => x.active = (x.name === name));
+    el('iface-current-label').textContent = i.ip ? `${i.name} (${i.ip})` : i.name;
+  }
   toast('info', '📡 Interface Changed', `Now monitoring: ${name}`);
 }
+
+// ─── File ops (mock) ──────────────────────────────────────────────────────────
 
 function openFile()  { toast('info', '📂 Open File', 'File dialog not available in web mode'); }
 
