@@ -419,6 +419,15 @@
       <button class="modal-close" onclick="closeModal('modal-iface')">✕</button>
     </div>
     <div class="modal-body" style="padding: 0;">
+      <div class="iface-banner" id="iface-banner" style="display:none;">
+        <span class="ib-icon">ℹ</span>
+        <div class="ib-text">
+          <b>Only sandbox interfaces are visible.</b>
+          To capture Wi-Fi or Ethernet traffic, run the dashboard locally with elevated privileges:
+          <code>sudo LIVE_CAPTURE=1 python3 app.py</code> (Linux/macOS) or
+          <code>$env:LIVE_CAPTURE=1; python app.py</code> in an Administrator PowerShell (Windows + Npcap).
+        </div>
+      </div>
       <div class="iface-filterbar">
         <input type="text" id="iface-filter" placeholder="Search interfaces…"
                oninput="filterInterfaceList(this.value)" />

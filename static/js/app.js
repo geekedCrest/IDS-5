@@ -695,11 +695,23 @@ async function loadInterfaces(showToast = false) {
       label.textContent = 'no interfaces';
     }
     renderInterfaceList(_interfaces);
+    updateSandboxBanner();
     if (showToast) toast('info', '↻ Refreshed', `${_interfaces.length} interfaces found`);
   } catch (e) {
     console.warn('Could not load interfaces:', e);
     el('iface-current-label').textContent = 'no interfaces';
   }
+}
+
+function updateSandboxBanner() {
+  const banner = el('iface-banner');
+  if (!banner) return;
+  // "Looks like a sandbox" = no recognizably-physical adapter names.
+  // Real machines almost always expose at least one Wi-Fi or Ethernet-style
+  // name (en0, wlan0, Wi-Fi, Ethernet, eth1+, wlp*, enp*, Local Area Connection).
+  const physicalRe = /^(wl|wlan|wlp|wifi|wi-fi|ethernet|eth[1-9]|en[0-9]|enp|eno|ens|local area connection)/i;
+  const hasPhysical = _interfaces.some(i => !i.loopback && physicalRe.test(i.name));
+  banner.style.display = hasPhysical ? 'none' : 'flex';
 }
 
 function ifaceIcon(iface) {
