@@ -93,6 +93,11 @@ socket.on('rules_loaded', (data) => {
   toast('info', '📜 Rules Loaded', `${data.count} rules loaded`);
 });
 
+socket.on('capture_error', (data) => {
+  toast('high', '⚠ Capture Error', data.error || 'Failed to capture packets');
+  setCaptureBtns(false, false);
+});
+
 // ─── Packet Management ────────────────────────────────────────────────────────
 function addPacket(pkt, live) {
   state.packets.push(pkt);

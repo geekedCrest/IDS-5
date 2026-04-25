@@ -18,7 +18,22 @@ python3 app.py
 
 Open **http://localhost:5000** in your browser. You should see the dashboard with a green "Connected" badge in the bottom right.
 
-**CLI mode** (requires root and a real network interface):
+### Live packet capture in the dashboard
+
+By default the dashboard runs in **simulation mode** — it shows synthetic packets and never raises real alerts (any "alert" against simulated traffic would be fake by definition).
+
+To capture **real packets** from a network interface and have the dashboard fire **real alerts** when those packets match a loaded rule, run on a host with a real NIC and root privileges:
+
+```bash
+# Linux / macOS (use the interface name shown in the dropdown, e.g. eth0, wlan0, en0)
+sudo LIVE_CAPTURE=1 python3 app.py
+```
+
+In live mode the dashboard captures every Ethernet frame on the chosen interface — TCP, UDP, ICMP, ARP, IPv6, plus higher-level protocols detected by port (HTTP, HTTPS/TLS, DNS, SSH, **FTP**, SMTP, etc.) — parses each packet, shows its layer tree and hex bytes, and only fires an alert when it strictly matches a rule in `default.rules` / `eval.rules`.
+
+> Live capture cannot run in cloud sandboxes (including Replit) because raw L2 sockets need root and a real interface. Use it on a local machine.
+
+### CLI mode (terminal-only, no dashboard)
 
 ```bash
 sudo python3 main.py <INTERFACE> [RULE_PATH]

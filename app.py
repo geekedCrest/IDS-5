@@ -31,14 +31,23 @@ state = {
     'rules': [],
     'packets': [],
     'alerts': [],
-    'protocol_stats': {'TCP': 0, 'UDP': 0, 'ICMP': 0, 'HTTP': 0, 'DNS': 0, 'OTHER': 0},
+    'protocol_stats': {
+        'TCP': 0, 'UDP': 0, 'ICMP': 0, 'ARP': 0,
+        'HTTP': 0, 'DNS': 0, 'TLS': 0, 'SSH': 0, 'FTP': 0, 'SMTP': 0,
+        'OTHER': 0,
+    },
     'traffic_history': [],
     'active_filter': '',
 }
 
-# Simulated traffic is synthetic, so any "alerts" produced from it are
-# inherently fake. Keep this False on the web dashboard. Real alerts come
-# from CLI mode (main.py) running on a live network interface.
+# ─── Capture mode ─────────────────────────────────────────────────────────────
+# LIVE_CAPTURE=1 → use scapy to capture real packets from the chosen network
+#                  interface. Requires root/sudo and a real NIC. Real alerts.
+# LIVE_CAPTURE unset → simulation mode. No real packets, no real alerts
+#                      (the dashboard still works as a visual demo).
+LIVE_CAPTURE = os.environ.get('LIVE_CAPTURE', '').lower() in ('1', 'true', 'yes', 'on')
+
+# Synthetic alerts are off by default in simulation mode (they're fake).
 SIMULATE_ALERTS = False
 
 PROTOCOLS = ['TCP', 'UDP', 'ICMP', 'HTTP', 'DNS', 'ARP', 'TLS', 'SSH', 'FTP', 'SMTP']
@@ -333,6 +342,207 @@ def _check_for_attacks(packets_window):
     return alerts
 
 
+# ─── Live packet capture (scapy) ───────────────────────────────────────────────
+
+def _scapy_proto(spkt):
+    """Identify high-level protocol + ports from a scapy packet."""
+    from scapy.layers.inet import IP, TCP, UDP, ICMP
+    from scapy.layers.l2 import ARP
+    sport = dport = None
+    if spkt.haslayer(ARP):
+        return 'ARP', None, None
+    if spkt.haslayer(TCP):
+        sport, dport = spkt[TCP].sport, spkt[TCP].dport
+        for p in (dport, sport):
+            if p == 80: return 'HTTP', sport, dport
+            if p == 443: return 'TLS', sport, dport
+            if p == 22: return 'SSH', sport, dport
+            if p in (20, 21): return 'FTP', sport, dport
+            if p in (25, 587): return 'SMTP', sport, dport
+        return 'TCP', sport, dport
+    if spkt.haslayer(UDP):
+        sport, dport = spkt[UDP].sport, spkt[UDP].dport
+        if 53 in (sport, dport): return 'DNS', sport, dport
+        return 'UDP', sport, dport
+    if spkt.haslayer(ICMP):
+        return 'ICMP', None, None
+    return 'OTHER', None, None
+
+
+def _scapy_to_packet(spkt):
+    """Convert a scapy packet into the dashboard's packet dict."""
+    from scapy.layers.inet import IP
+    from scapy.layers.inet6 import IPv6
+    from scapy.layers.l2 import ARP
+    from scapy.packet import NoPayload
+
+    state['packet_count'] += 1
+    pkt_id = state['packet_count']
+    ts = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+    length = len(spkt)
+    proto, sport, dport = _scapy_proto(spkt)
+
+    src_ip = dst_ip = ''
+    if spkt.haslayer(IP):
+        src_ip, dst_ip = spkt[IP].src, spkt[IP].dst
+    elif spkt.haslayer(IPv6):
+        src_ip, dst_ip = spkt[IPv6].src, spkt[IPv6].dst
+    elif spkt.haslayer(ARP):
+        src_ip, dst_ip = spkt[ARP].psrc, spkt[ARP].pdst
+
+    # Real rule matching against captured traffic
+    is_alert = False
+    matched_rule = None
+    sp = str(sport) if sport is not None else 'any'
+    dp = str(dport) if dport is not None else 'any'
+    for rule in ids_rules:
+        if _packet_matches_rule(rule, src_ip, dst_ip, proto, sp, dp):
+            is_alert = True
+            matched_rule = str(rule)
+            break
+
+    threat = 'CRITICAL' if is_alert else 'LOW'
+
+    # Hex view (cap at 256 bytes for the panel)
+    raw = bytes(spkt)[:256]
+    hex_lines = []
+    for i in range(0, len(raw), 16):
+        chunk = raw[i:i+16]
+        hex_part = ' '.join(f'{b:02x}' for b in chunk).ljust(47)
+        ascii_part = ''.join(chr(b) if 32 <= b < 127 else '.' for b in chunk)
+        hex_lines.append({'offset': f'{i:04x}', 'hex': hex_part, 'ascii': ascii_part})
+
+    # Walk scapy layer chain → dashboard layer tree
+    layers = []
+    cur = spkt
+    while cur is not None and not isinstance(cur, NoPayload):
+        fields = []
+        for f in cur.fields_desc:
+            try:
+                val = cur.getfieldval(f.name)
+                fields.append({'key': f.name, 'value': str(val)[:200]})
+            except Exception:
+                pass
+        layers.append({'name': cur.name, 'fields': fields})
+        cur = cur.payload
+
+    return {
+        'id': pkt_id,
+        'ts': ts,
+        'src_ip': src_ip,
+        'dst_ip': dst_ip,
+        'proto': proto,
+        'length': length,
+        'info': spkt.summary(),
+        'threat': threat,
+        'is_alert': is_alert,
+        'matched_rule': matched_rule,
+        'hex': hex_lines,
+        'layers': layers,
+        'src_port': sport,
+        'dst_port': dport,
+    }
+
+
+def _process_live_packet(spkt):
+    """Per-packet callback for scapy.sniff in live mode."""
+    if not state['running'] or state['paused']:
+        return
+    try:
+        pkt = _scapy_to_packet(spkt)
+    except Exception as e:
+        print(f'[LIVE] Packet processing error: {e}')
+        return
+
+    state['packets'].append(pkt)
+    if len(state['packets']) > 2000:
+        state['packets'] = state['packets'][-2000:]
+
+    proto_key = pkt['proto'] if pkt['proto'] in state['protocol_stats'] else 'OTHER'
+    state['protocol_stats'][proto_key] = state['protocol_stats'].get(proto_key, 0) + 1
+
+    socketio.emit('packet', pkt)
+
+    # Real alert from a real rule match on a real packet
+    if pkt['is_alert']:
+        alert = {
+            'id': state['alert_count'] + 1,
+            'ts': pkt['ts'],
+            'type': 'Rule Match',
+            'threat': pkt['threat'],
+            'src': pkt['src_ip'],
+            'dst': pkt['dst_ip'],
+            'rule': pkt['matched_rule'],
+            'info': pkt['info'],
+            'proto': pkt['proto'],
+        }
+        state['alert_count'] += 1
+        state['alerts'].append(alert)
+        if len(state['alerts']) > 500:
+            state['alerts'] = state['alerts'][-500:]
+        socketio.emit('alert', alert)
+
+
+def live_capture_thread():
+    """Run scapy.sniff in 1-second chunks while the user has capture started."""
+    from scapy.all import sniff
+    print('[LIVE] Live capture thread started')
+    while True:
+        if state['running'] and not state['paused']:
+            iface = state['interface']
+            try:
+                sniff(iface=iface, prn=_process_live_packet,
+                      timeout=1, store=False)
+            except PermissionError:
+                msg = f'Permission denied on {iface}. Re-run with sudo for live capture.'
+                print(f'[LIVE] {msg}')
+                socketio.emit('capture_error', {'error': msg})
+                state['running'] = False
+                socketio.sleep(1)
+            except OSError as e:
+                msg = f'Cannot open interface {iface}: {e}'
+                print(f'[LIVE] {msg}')
+                socketio.emit('capture_error', {'error': msg})
+                state['running'] = False
+                socketio.sleep(1)
+            except Exception as e:
+                print(f'[LIVE] sniff error: {e}')
+                socketio.sleep(1)
+        else:
+            socketio.sleep(0.2)
+
+
+def live_stats_thread():
+    """Emit periodic traffic-rate updates while live capture is running."""
+    last_count = 0
+    last_time = time.time()
+    while True:
+        socketio.sleep(1.0)
+        if not state['running'] or state['paused']:
+            last_count = state['packet_count']
+            last_time = time.time()
+            continue
+        now = time.time()
+        cur = state['packet_count']
+        elapsed = max(now - last_time, 0.001)
+        pps = round((cur - last_count) / elapsed, 1)
+        last_count, last_time = cur, now
+
+        traffic_point = {
+            'ts': datetime.now().strftime('%H:%M:%S'),
+            'pps': pps,
+            'total': cur,
+        }
+        state['traffic_history'].append(traffic_point)
+        if len(state['traffic_history']) > 60:
+            state['traffic_history'] = state['traffic_history'][-60:]
+        socketio.emit('traffic_update', {
+            'traffic': traffic_point,
+            'protocol_stats': state['protocol_stats'],
+            'status': _status(),
+        })
+
+
 # ─── Background simulation thread ──────────────────────────────────────────────
 
 def simulation_thread():
@@ -610,5 +820,13 @@ def on_load_rules(data):
 # ─── Entry point ──────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
-    socketio.start_background_task(simulation_thread)
+    if LIVE_CAPTURE:
+        print(f'[*] LIVE CAPTURE enabled — sniffing real traffic on "{state["interface"]}".')
+        print('[*] Real alerts will fire when captured packets match a loaded rule.')
+        socketio.start_background_task(live_capture_thread)
+        socketio.start_background_task(live_stats_thread)
+    else:
+        print('[*] Simulation mode (no real packets, no real alerts).')
+        print('[*] To capture real packets: set LIVE_CAPTURE=1 and run with sudo on a host with a real NIC.')
+        socketio.start_background_task(simulation_thread)
     socketio.run(app, host='0.0.0.0', port=5000, debug=False)
