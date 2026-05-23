@@ -279,9 +279,9 @@ body[data-threat='critical']::after {
   display: flex; align-items: center;
 }
 .ifr-spark {
-  width: 60px; height: 14px;
-  background: linear-gradient(90deg, transparent, rgba(86,156,214,0.15));
-  border-radius: 2px;
+  width: 80px;
+  height: 16px;
+  display: block;
 }
 .ifr-addrs {
   font-family: 'Cascadia Code', monospace; font-size: 11px;

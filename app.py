@@ -799,6 +799,23 @@ def api_rules_upload():
         return jsonify({'success': False, 'error': str(e)})
 
 
+def get_friendly_name(iface_name):
+    if os.name == 'nt':
+        try:
+            import winreg
+            import re
+            m = re.search(r'\{[a-fA-F0-9\-]+\}', iface_name)
+            if m:
+                guid = m.group(0)
+                reg_path = f"SYSTEM\\CurrentControlSet\\Control\\Network\\{{4D36E972-E325-11CE-BFC1-08002BE10318}}\\{guid}\\Connection"
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, reg_path) as key:
+                    friendly_name, _ = winreg.QueryValueEx(key, "Name")
+                    return friendly_name
+        except Exception:
+            pass
+    return iface_name
+
+
 @app.route('/api/interfaces')
 def api_interfaces():
     ifaces = []
@@ -808,8 +825,10 @@ def api_interfaces():
         ipv6_list = [a.get('addr', '').split('%')[0] for a in addrs.get(netifaces.AF_INET6, []) if a.get('addr')]
         mac = addrs.get(netifaces.AF_LINK, [{}])[0].get('addr', '') if hasattr(netifaces, 'AF_LINK') else ''
         is_loopback = name in ('lo', 'lo0') or any(ip.startswith('127.') for ip in ipv4_list) or '::1' in ipv6_list
+        friendly = get_friendly_name(name)
         ifaces.append({
             'name': name,
+            'friendly_name': friendly,
             'ip': ipv4_list[0] if ipv4_list else '',
             'ipv4': ipv4_list,
             'ipv6': ipv6_list,

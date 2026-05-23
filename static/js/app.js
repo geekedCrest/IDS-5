@@ -741,9 +741,11 @@ async function loadInterfaces(showToast = false) {
     const label = el('iface-current-label');
     const active = _interfaces.find(i => i.active);
     if (active) {
-      label.textContent = active.ip ? `${active.name} (${active.ip})` : active.name;
+      const displayName = active.friendly_name || active.name;
+      label.textContent = active.ip ? `${displayName} (${active.ip})` : displayName;
     } else if (_interfaces.length) {
-      label.textContent = _interfaces[0].name;
+      const displayName = _interfaces[0].friendly_name || _interfaces[0].name;
+      label.textContent = displayName;
     } else {
       label.textContent = 'no interfaces';
     }
@@ -778,6 +780,63 @@ function ifaceIcon(iface) {
   return '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M3 5h18v10H3zm0 12h18v2H3zm6-3h6v-2H9z"/></svg>';
 }
 
+function drawSparkline(canvas, isLoopback, isActive) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+  
+  const points = [];
+  const steps = 14;
+  const mid = h / 2;
+  
+  // Initialize points
+  for (let i = 0; i <= steps; i++) {
+    points.push(mid);
+  }
+  
+  function animate() {
+    if (!document.body.contains(canvas)) return; // Stop animation if canvas was removed
+    
+    ctx.clearRect(0, 0, w, h);
+    ctx.beginPath();
+    
+    // Wireshark look: active gets a crisp glowing line, inactive is a soft line
+    ctx.strokeStyle = isActive ? 'rgba(25, 199, 242, 0.9)' : 'rgba(167, 183, 206, 0.4)';
+    ctx.lineWidth = 1.25;
+    ctx.lineJoin = 'round';
+    
+    const stepW = w / steps;
+    ctx.moveTo(0, points[0]);
+    for (let i = 1; i <= steps; i++) {
+      ctx.lineTo(i * stepW, points[i]);
+    }
+    ctx.stroke();
+    
+    // Slide points to left and calculate next point
+    points.shift();
+    let nextPoint;
+    if (isActive) {
+      // Active interface gets beautiful, realistic jagged fluctuations (live activity)
+      nextPoint = Math.random() * (h - 2) + 1;
+    } else if (isLoopback) {
+      // Loopback gets minor, occasional spikes
+      nextPoint = Math.random() > 0.85 ? Math.random() * (h - 2) + 1 : mid + (Math.random() - 0.5) * 2;
+    } else {
+      // Idle interface has very minor, steady fluctuations
+      nextPoint = mid + (Math.random() - 0.5) * 2.5;
+    }
+    points.push(nextPoint);
+    
+    setTimeout(() => {
+      if (document.body.contains(canvas)) {
+        requestAnimationFrame(animate);
+      }
+    }, 140);
+  }
+  
+  animate();
+}
+
 function renderInterfaceList(list) {
   const container = el('iface-list');
   if (!list.length) {
@@ -799,7 +858,7 @@ function renderInterfaceList(list) {
     iconSpan.innerHTML = ifaceIcon(i);
     const nameSpan = document.createElement('span');
     nameSpan.className = 'ifr-name';
-    nameSpan.textContent = i.name;
+    nameSpan.textContent = i.friendly_name || i.name;
     nameCell.append(iconSpan, nameSpan);
     if (i.active) {
       const b = document.createElement('span');
@@ -816,9 +875,16 @@ function renderInterfaceList(list) {
 
     const trafficCell = document.createElement('div');
     trafficCell.className = 'ifr-traffic';
-    const spark = document.createElement('div');
+    const spark = document.createElement('canvas');
     spark.className = 'ifr-spark';
+    spark.width = 80;
+    spark.height = 16;
     trafficCell.appendChild(spark);
+    
+    // Draw the sparkline on canvas
+    const hasIP = i.ip && i.ip.length > 0;
+    const isActive = hasIP && !i.loopback;
+    setTimeout(() => drawSparkline(spark, i.loopback, isActive), 10);
 
     const addrCell = document.createElement('div');
     addrCell.className = 'ifr-addrs';
@@ -911,9 +977,10 @@ function setInterface(name) {
   const i = _interfaces.find(x => x.name === name);
   if (i) {
     _interfaces.forEach(x => x.active = (x.name === name));
-    el('iface-current-label').textContent = i.ip ? `${i.name} (${i.ip})` : i.name;
+    const displayName = i.friendly_name || i.name;
+    el('iface-current-label').textContent = i.ip ? `${displayName} (${i.ip})` : displayName;
+    toast('info', '📡 Interface Changed', `Now monitoring: ${displayName}`);
   }
-  toast('info', '📡 Interface Changed', `Now monitoring: ${name}`);
 }
 
 // ─── File ops (mock) ──────────────────────────────────────────────────────────
