@@ -370,8 +370,16 @@ function updateStatus(status) {
   el('sb-packets').textContent = status.packet_count || 0;
   el('sb-filtered').textContent = status.filtered_count || 0;
   el('sb-alerts').textContent = status.alert_count || 0;
-  el('sb-interface').textContent = status.interface || '';
+  el('sb-interface').textContent = status.live_capture_mode ? `${status.interface} (live)` : `${status.interface} (simulated)`;
   el('uptime-display').textContent = status.uptime || '00:00:00';
+
+  if (status.live_capture_mode !== undefined) {
+    const isLive = status.live_capture_mode;
+    const simBtn = el('mode-btn-sim');
+    const liveBtn = el('mode-btn-live');
+    if (simBtn) simBtn.classList.toggle('active', !isLive);
+    if (liveBtn) liveBtn.classList.toggle('active', isLive);
+  }
   
   if (status.active_detectors_count !== undefined) {
     const ad = el('sb-active-detectors');
@@ -1299,4 +1307,9 @@ function uploadRulesFile(input) {
     .catch(e => {
       toast('high', '❌ Import Error', 'Failed to upload rules file');
     });
+}
+
+function setCaptureMode(live) {
+  socket.emit('toggle_capture_mode', { live: live });
+  toast('info', '⚙ Mode Changed', `Switched to ${live ? 'Live Sniffer' : 'Simulation Mode'}`);
 }

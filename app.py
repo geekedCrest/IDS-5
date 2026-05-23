@@ -17,6 +17,13 @@ app.config['SECRET_KEY'] = 'ids-dashboard-secret'
 # set logger to False to prevent console flooding
 socketio = SocketIO(app, cors_allowed_origins='*', async_mode='threading', logger=False, engineio_logger=False)
 
+# ─── Capture mode ─────────────────────────────────────────────────────────────
+# LIVE_CAPTURE=1 → use scapy to capture real packets from the chosen network
+#                  interface. Requires root/sudo and a real NIC. Real alerts.
+# LIVE_CAPTURE unset → simulation mode. No real packets, no real alerts
+#                      (the dashboard still works as a visual demo).
+LIVE_CAPTURE = os.environ.get('LIVE_CAPTURE', '').lower() in ('1', 'true', 'yes', 'on')
+
 # ─── State ────────────────────────────────────────────────────────────────────
 
 state = {
@@ -38,14 +45,8 @@ state = {
     'traffic_history': [],
     'active_filter': '',
     'selected_rules_file': 'default.rules',
+    'live_capture_mode': LIVE_CAPTURE,
 }
-
-# ─── Capture mode ─────────────────────────────────────────────────────────────
-# LIVE_CAPTURE=1 → use scapy to capture real packets from the chosen network
-#                  interface. Requires root/sudo and a real NIC. Real alerts.
-# LIVE_CAPTURE unset → simulation mode. No real packets, no real alerts
-#                      (the dashboard still works as a visual demo).
-LIVE_CAPTURE = os.environ.get('LIVE_CAPTURE', '').lower() in ('1', 'true', 'yes', 'on')
 
 # Synthetic alerts are off by default in simulation mode (they're fake).
 SIMULATE_ALERTS = False
@@ -509,6 +510,8 @@ def _scapy_to_packet(spkt):
 
 def _process_live_packet(spkt):
     """Per-packet callback for scapy.sniff in live mode."""
+    if not state['live_capture_mode']:
+        return
     try:
         pkt = _scapy_to_packet(spkt)
     except Exception as e:
@@ -611,6 +614,8 @@ def simulation_thread():
         # Run continuously in background
         delay = random.uniform(0.12, 0.28)
         socketio.sleep(delay)
+        if state['live_capture_mode']:
+            continue
 
         pkt = _generate_packet()
         state['packets'].append(pkt)
@@ -687,7 +692,8 @@ def _status():
         'paused': state['paused'],
         'uptime': _uptime(),
         'active_detectors_count': active_count,
-        'selected_rules_file': state['selected_rules_file']
+        'selected_rules_file': state['selected_rules_file'],
+        'live_capture_mode': state['live_capture_mode']
     }
 
 
@@ -890,6 +896,14 @@ def on_toggle_detector(data):
     }, broadcast=True)
 
 
+@socketio.on('toggle_capture_mode')
+def on_toggle_capture_mode(data):
+    live_mode = data.get('live', False)
+    state['live_capture_mode'] = live_mode
+    print(f"[*] Capture mode switched dynamically to: {'LIVE CAPTURE' if live_mode else 'SIMULATION'}")
+    emit('status_update', _status(), broadcast=True)
+
+
 @socketio.on('start_capture')
 def on_start():
     state['running'] = True
@@ -967,15 +981,10 @@ def on_load_rules(data):
 # ─── Entry point ──────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
-    if LIVE_CAPTURE:
-        print(f'[*] LIVE CAPTURE enabled — sniffing real traffic on "{state["interface"]}".')
-        print('[*] Real alerts will fire when captured packets match a loaded rule.')
-        socketio.start_background_task(live_capture_thread)
-        socketio.start_background_task(live_stats_thread)
-    else:
-        print('[*] Simulation mode (no real packets, no real alerts).')
-        print('[*] To capture real packets: set LIVE_CAPTURE=1 and run with sudo on a host with a real NIC.')
-        socketio.start_background_task(simulation_thread)
+    print('[*] Initializing background capture & simulation engines (ready for dynamic toggle)...')
+    socketio.start_background_task(live_capture_thread)
+    socketio.start_background_task(live_stats_thread)
+    socketio.start_background_task(simulation_thread)
     port_start = int(os.environ.get('PORT', 5000))
     for port in range(port_start, port_start + 100):
         try:

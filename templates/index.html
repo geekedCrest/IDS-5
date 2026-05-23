@@ -127,6 +127,11 @@
     <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
     Classify
   </button>
+  <div class="tb-sep"></div>
+  <div class="mode-toggle-wrap" style="display: flex; align-items: center; background: rgba(0,0,0,0.35); border: 1px solid var(--border2); border-radius: 6px; padding: 2px; height: 26px; user-select: none;">
+    <button class="mode-btn active" id="mode-btn-sim" onclick="setCaptureMode(false)" style="padding: 2px 10px; border: none; border-radius: 4px; background: transparent; color: var(--text2); font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s; font-family: inherit; height: 100%; display: flex; align-items: center;">Simulation</button>
+    <button class="mode-btn" id="mode-btn-live" onclick="setCaptureMode(true)" style="padding: 2px 10px; border: none; border-radius: 4px; background: transparent; color: var(--text2); font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s; font-family: inherit; height: 100%; display: flex; align-items: center;">Live Sniffer</button>
+  </div>
   <div class="tb-spacer"></div>
   <button class="iface-selector" onclick="openInterfacePicker()" title="Select capture interface">
     <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="color:var(--text3)"><path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/></svg>
