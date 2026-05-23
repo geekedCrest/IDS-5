@@ -558,6 +558,10 @@ def live_capture_thread():
     print('[LIVE] Live capture thread started (Continuous background monitoring)')
     while True:
         iface = state['interface']
+        # On Windows, Scapy's Npcap driver requires the '\\Device\\NPF_' prefix before the GUID
+        if os.name == 'nt' and iface.startswith('{') and iface.endswith('}'):
+            iface = f"\\Device\\NPF_{iface}"
+            
         try:
             sniff(iface=iface, prn=_process_live_packet,
                   timeout=1, store=False)
