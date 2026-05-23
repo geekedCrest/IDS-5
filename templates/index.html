@@ -25,6 +25,7 @@
       <div class="dropdown">
         <div class="dd-item" onclick="openFile()"><span class="icon">📂</span> Open Capture…</div>
         <div class="dd-item" onclick="saveCapture()"><span class="icon">💾</span> Save Packets…</div>
+        <div class="dd-item" onclick="document.getElementById('rules-upload-input').click()"><span class="icon">📥</span> Import Rules…</div>
         <div class="dd-sep"></div>
         <div class="dd-item"><span class="icon">📋</span> Export Rules…</div>
         <div class="dd-sep"></div>
@@ -108,6 +109,16 @@
     <svg viewBox="0 0 24 24"><path d="M3 5h2V3a2 2 0 012-2h10a2 2 0 012 2v2h2a1 1 0 010 2h-1v13a2 2 0 01-2 2H5a2 2 0 01-2-2V7H2a1 1 0 010-2h1z"/></svg>
     Rules
   </button>
+  <div class="rules-file-selector-wrap" style="display: flex; align-items: center; gap: 4px; margin-left: 2px;">
+    <select id="rules-file-dropdown" onchange="changeRulesFile(this.value)" class="iface-selector" style="margin-right: 0; padding: 3px 8px; font-family: inherit; font-size: 11px; height: 24px;">
+      <option value="default.rules">default.rules</option>
+    </select>
+    <label class="tb-btn" style="cursor: pointer; padding: 4px 8px; display: inline-flex; align-items: center; gap: 4px; height: 24px; font-size: 11px; border: 1px dashed var(--border2); border-radius: 4px; background: rgba(25,199,242,0.06); transition: all 0.2s;" title="Import Snort Rules File (.rules)">
+      <svg viewBox="0 0 24 24" style="width: 12px; height: 12px; color: var(--accent2);"><path d="M19.35 10.04A7.49 7.49 0 0012 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 000 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
+      Import
+      <input type="file" id="rules-upload-input" accept=".rules" style="display:none" onchange="uploadRulesFile(this)">
+    </label>
+  </div>
   <button class="tb-btn" onclick="showTab('stats')" title="Statistics">
     <svg viewBox="0 0 24 24"><path d="M3 3v18h18v-2H5V3H3zm4 14l4-4 4 4 4-8"/></svg>
     Stats
@@ -352,6 +363,17 @@
       <div class="mini-proto-list" id="mini-proto-list"></div>
     </div>
 
+    <!-- Security Detectors -->
+    <div class="sidebar-section" id="panel-detectors">
+      <div class="sidebar-title">
+        <span>Security Detectors</span>
+        <span class="badge-pill" id="sb-detectors-count">0</span>
+      </div>
+      <div class="sb-detectors-list" id="sb-detectors-list">
+        <div class="empty-state">No detectors loaded</div>
+      </div>
+    </div>
+
     <!-- Active Rules -->
     <div class="sidebar-section">
       <div class="sidebar-title">
@@ -375,6 +397,10 @@
   <div class="sb-item">Filtered: <strong id="sb-filtered">0</strong></div>
   <div class="sb-sep"></div>
   <div class="sb-item">Alerts: <strong id="sb-alerts">0</strong></div>
+  <div class="sb-sep"></div>
+  <div class="sb-item">Detectors: <strong id="sb-active-detectors">0</strong></div>
+  <div class="sb-sep"></div>
+  <div class="sb-item">Rules: <strong id="sb-selected-rules">default.rules</strong></div>
   <div class="sb-sep"></div>
   <div class="sb-item"><span id="sb-status">Idle — press Start to begin capture</span></div>
   <div class="sb-spacer"></div>

@@ -26,7 +26,7 @@ def _default_dd_set():
     # returns defaultdict(set)
     return defaultdict(_default_set)
 
-class SynScanDetector(Process):
+class SynScanDetector(object):
     def __init__(self, task_queue, stop_event, log_file: str = "logs/synscan.log"):
         super().__init__()
         self.daemon = True
@@ -188,7 +188,7 @@ class SynScanDetector(Process):
 
                     # Debug printing - show running potential count
                     potential_count = ports_count
-                    print(f"[DEBUG] SYN seen: {src} -> {dst}:{dport} (ports_count~{potential_count})")
+                    # print(f"[DEBUG] SYN seen: {src} -> {dst}:{dport} (ports_count~{potential_count})")
 
                     # Per-target detection
                     if ports_count >= self.PORTS_THRESHOLD:

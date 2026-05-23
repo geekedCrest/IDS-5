@@ -614,7 +614,7 @@ body[data-threat='critical']::after {
   width: var(--sidebar-w); flex-shrink: 0;
   background: linear-gradient(180deg, rgba(13,20,34,0.95), rgba(9,15,26,0.9));
   border-left: 1px solid var(--border);
-  display: flex; flex-direction: column; overflow: hidden;
+  display: flex; flex-direction: column; overflow-y: auto;
 }
 .sidebar-section {
   border-bottom: 1px solid var(--border);
@@ -943,3 +943,48 @@ body[data-threat='critical']::after {
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text3); }
+
+/* ─── Security Detectors Panel Styles ─── */
+.sb-detectors-list {
+  background: transparent;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.detector-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  transition: background 0.15s;
+}
+.detector-item:hover {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 4px;
+}
+.detector-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 80%;
+  cursor: help;
+}
+.detector-name {
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--text);
+  letter-spacing: 0.2px;
+}
+.detector-desc {
+  font-size: 9.5px;
+  color: var(--text3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.detector-item input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}

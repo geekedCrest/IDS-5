@@ -36,6 +36,15 @@ socket.on('init', (data) => {
   state.trafficHistory = data.traffic_history || [];
   updateStatus(data.status);
   renderSidebarRules(data.rules || []);
+  
+  if (data.detectors) {
+    renderDetectors(data.detectors);
+  }
+  
+  if (data.rules_files) {
+    populateRulesDropdown(data.rules_files, data.selected_rules_file);
+  }
+  
   if (data.recent_packets) {
     data.recent_packets.forEach(p => addPacket(p, false));
     renderPackets();
@@ -46,6 +55,16 @@ socket.on('init', (data) => {
   }
   initCharts();
   updateCharts();
+});
+
+socket.on('detector_status_changed', (data) => {
+  if (data.detectors) {
+    renderDetectors(data.detectors);
+  }
+  if (data.status) {
+    updateStatus(data.status);
+  }
+  toast('info', '🛡 Detector Updated', `${data.id} is now ${data.enabled ? 'Enabled' : 'Disabled'}`);
 });
 
 socket.on('packet', (pkt) => {
@@ -90,7 +109,19 @@ socket.on('cleared', () => {
 
 socket.on('rules_loaded', (data) => {
   renderSidebarRules(data.rules || []);
+  if (data.rules_files) {
+    populateRulesDropdown(data.rules_files, data.selected_rules_file);
+  }
+  if (data.selected_rules_file) {
+    const sbr = el('sb-selected-rules');
+    if (sbr) sbr.textContent = data.selected_rules_file;
+    const rfd = el('rules-file-dropdown');
+    if (rfd) rfd.value = data.selected_rules_file;
+  }
   toast('info', '📜 Rules Loaded', `${data.count} rules loaded`);
+  if (el('tab-rules').classList.contains('active')) {
+    loadRulesTab();
+  }
 });
 
 socket.on('capture_error', (data) => {
@@ -341,6 +372,20 @@ function updateStatus(status) {
   el('sb-alerts').textContent = status.alert_count || 0;
   el('sb-interface').textContent = status.interface || '';
   el('uptime-display').textContent = status.uptime || '00:00:00';
+  
+  if (status.active_detectors_count !== undefined) {
+    const ad = el('sb-active-detectors');
+    if (ad) ad.textContent = status.active_detectors_count;
+    const sdc = el('sb-detectors-count');
+    if (sdc) sdc.textContent = status.active_detectors_count;
+  }
+  
+  if (status.selected_rules_file !== undefined) {
+    const sr = el('sb-selected-rules');
+    if (sr) sr.textContent = status.selected_rules_file;
+    const rfd = el('rules-file-dropdown');
+    if (rfd) rfd.value = status.selected_rules_file;
+  }
 
   const dot = el('ci-dot');
   const label = el('ci-label');
@@ -1172,3 +1217,86 @@ document.addEventListener('DOMContentLoaded', () => {
   const ri = el('rule-validate-input');
   if (ri) ri.addEventListener('keydown', e => { if (e.key === 'Enter') validateRuleInline(); });
 });
+
+// ─── Dynamic Security Detectors & Rules File Toggles ──────────────────────────
+
+function renderDetectors(detectors) {
+  const container = el('sb-detectors-list');
+  const countEl = el('sb-detectors-count');
+  
+  if (!detectors || detectors.length === 0) {
+    container.innerHTML = '<div class="empty-state">No detectors found</div>';
+    if (countEl) countEl.textContent = '0';
+    return;
+  }
+  
+  // Count active/enabled detectors
+  const activeCount = detectors.filter(d => d.enabled).length;
+  if (countEl) countEl.textContent = activeCount;
+  const sbc = el('sb-active-detectors');
+  if (sbc) sbc.textContent = activeCount;
+
+  container.innerHTML = detectors.map(d => `
+    <div class="detector-item">
+      <div class="detector-info" title="${escHtml(d.description)}">
+        <span class="detector-name">${escHtml(d.name)}</span>
+        <span class="detector-desc">${escHtml(d.description)}</span>
+      </div>
+      <label class="switch-container">
+        <input type="checkbox" ${d.enabled ? 'checked' : ''} 
+               onchange="toggleDetector('${d.id}', this.checked)" />
+      </label>
+    </div>
+  `).join('');
+}
+
+function toggleDetector(id, enabled) {
+  socket.emit('toggle_detector', { id: id, enabled: enabled });
+}
+
+function populateRulesDropdown(files, selected) {
+  const dropdown = el('rules-file-dropdown');
+  if (!dropdown) return;
+  
+  dropdown.innerHTML = files.map(file => `
+    <option value="${escHtml(file)}" ${file === selected ? 'selected' : ''}>
+      ${escHtml(file)}
+    </option>
+  `).join('');
+}
+
+function changeRulesFile(val) {
+  socket.emit('load_rules', { path: val });
+}
+
+function uploadRulesFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+
+  if (!file.name.toLowerCase().endsWith('.rules')) {
+    toast('high', '❌ Invalid File', 'Please select a file ending in .rules');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  toast('info', '📤 Uploading Rules', `Uploading ${file.name}...`);
+
+  fetch('/api/rules/upload', {
+    method: 'POST',
+    body: formData
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        toast('info', '📜 Rules Imported', `Successfully loaded ${data.rules_count} rules from ${data.filename}`);
+      } else {
+        toast('high', '❌ Import Failed', data.error);
+      }
+    })
+    .catch(e => {
+      toast('high', '❌ Import Error', 'Failed to upload rules file');
+    });
+}

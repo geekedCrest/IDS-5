@@ -9,7 +9,7 @@ import time
 from multiprocessing import Process
 from scapy.all import Ether, ARP, wrpcap
 
-class ArpSpoofDetector(Process):
+class ArpSpoofDetector(object):
     def __init__(self, task_queue, stop_event,
                 log_file="logs/arp_spoof.log",
                 window_sec=10,

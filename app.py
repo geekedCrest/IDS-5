@@ -1,7 +1,4 @@
 # -*- coding: utf-8 -*-
-import eventlet
-eventlet.monkey_patch()
-
 import random
 import time
 import json
@@ -13,10 +10,12 @@ import netifaces
 from rules import load_rules, verify_rules
 from signature import Signature
 from classifier import get_model, get_feature_info, predict_single, feature_info_from_csv
+from detector_manager import DetectorManager
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'ids-dashboard-secret'
-socketio = SocketIO(app, cors_allowed_origins='*', async_mode='eventlet')
+# set logger to False to prevent console flooding
+socketio = SocketIO(app, cors_allowed_origins='*', async_mode='threading', logger=False, engineio_logger=False)
 
 # ─── State ────────────────────────────────────────────────────────────────────
 
@@ -38,6 +37,7 @@ state = {
     },
     'traffic_history': [],
     'active_filter': '',
+    'selected_rules_file': 'default.rules',
 }
 
 # ─── Capture mode ─────────────────────────────────────────────────────────────
@@ -95,6 +95,67 @@ def load_ids_rules(path='default.rules'):
         return []
 
 ids_rules = load_ids_rules('default.rules')
+
+# ─── Detector Manager & Simulated to Scapy conversion ─────────────────────────
+
+def handle_detector_alert(detector_name, alert_dict):
+    alert = {
+        'id': state['alert_count'] + 1,
+        'ts': datetime.now().strftime('%H:%M:%S.%f')[:-3],
+        'type': alert_dict['msg'].split(' - ')[0] if ' - ' in alert_dict['msg'] else detector_name,
+        'threat': alert_dict['threat'],
+        'src': alert_dict['src_ip'],
+        'dst': alert_dict['dst_ip'],
+        'rule': f"[{detector_name}] {alert_dict['msg']}",
+        'info': alert_dict['msg'],
+        'proto': 'IP',
+    }
+    state['alert_count'] += 1
+    state['alerts'].append(alert)
+    if len(state['alerts']) > 500:
+        state['alerts'] = state['alerts'][-500:]
+        
+    if state['running'] and not state['paused']:
+        socketio.emit('alert', alert)
+
+detector_manager = DetectorManager(
+    detectors_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'detectors'),
+    alert_callback=handle_detector_alert
+)
+detector_manager.start_all_enabled()
+
+def simulated_to_scapy(pkt_dict):
+    try:
+        from scapy.all import Ether, IP, TCP, UDP, ICMP, ARP, Raw, DNS, DNSQR
+        
+        p = Ether()
+        proto = pkt_dict.get('proto', 'TCP')
+        src_ip = pkt_dict.get('src_ip', '192.168.0.1')
+        dst_ip = pkt_dict.get('dst_ip', '192.168.0.2')
+        
+        if proto == 'ARP':
+            p = p / ARP(psrc=src_ip, pdst=dst_ip, op=1)
+        else:
+            p = p / IP(src=src_ip, dst=dst_ip)
+            sport = pkt_dict.get('src_port', 12345)
+            dport = pkt_dict.get('dst_port', 80)
+            info = pkt_dict.get('info', '')
+            
+            if proto in ('TCP', 'HTTP', 'TLS', 'SSH', 'FTP', 'SMTP'):
+                p = p / TCP(sport=sport, dport=dport, flags="S")
+                if proto in ('HTTP', 'FTP', 'SMTP', 'SSH', 'TLS'):
+                    p = p / Raw(load=info.encode('utf-8', errors='ignore'))
+            elif proto in ('UDP', 'DNS'):
+                p = p / UDP(sport=sport, dport=dport)
+                if proto == 'DNS':
+                    p = p / DNS(rd=1, qd=DNSQR(qname="evil-domain.ru"))
+            elif proto == 'ICMP':
+                p = p / ICMP()
+        return p
+    except Exception as e:
+        print(f"[WARN] Error converting simulated packet to Scapy: {e}")
+        return None
+
 
 # ─── Rule matching helpers ─────────────────────────────────────────────────────
 
@@ -221,6 +282,8 @@ def _generate_packet():
         'matched_rule': matched_rule,
         'hex': hex_lines,
         'layers': layers,
+        'src_port': src_port,
+        'dst_port': dst_port,
     }
 
     # Update protocol stats
@@ -446,8 +509,6 @@ def _scapy_to_packet(spkt):
 
 def _process_live_packet(spkt):
     """Per-packet callback for scapy.sniff in live mode."""
-    if not state['running'] or state['paused']:
-        return
     try:
         pkt = _scapy_to_packet(spkt)
     except Exception as e:
@@ -461,7 +522,11 @@ def _process_live_packet(spkt):
     proto_key = pkt['proto'] if pkt['proto'] in state['protocol_stats'] else 'OTHER'
     state['protocol_stats'][proto_key] = state['protocol_stats'].get(proto_key, 0) + 1
 
-    socketio.emit('packet', pkt)
+    # Feed packet to Detector Manager
+    detector_manager.process_packet(spkt)
+
+    if state['running'] and not state['paused']:
+        socketio.emit('packet', pkt)
 
     # Real alert from a real rule match on a real packet
     if pkt['is_alert']:
@@ -480,36 +545,30 @@ def _process_live_packet(spkt):
         state['alerts'].append(alert)
         if len(state['alerts']) > 500:
             state['alerts'] = state['alerts'][-500:]
-        socketio.emit('alert', alert)
+        if state['running'] and not state['paused']:
+            socketio.emit('alert', alert)
 
 
 def live_capture_thread():
-    """Run scapy.sniff in 1-second chunks while the user has capture started."""
+    """Run scapy.sniff continuously in the background."""
     from scapy.all import sniff
-    print('[LIVE] Live capture thread started')
+    print('[LIVE] Live capture thread started (Continuous background monitoring)')
     while True:
-        if state['running'] and not state['paused']:
-            iface = state['interface']
-            try:
-                sniff(iface=iface, prn=_process_live_packet,
-                      timeout=1, store=False)
-            except PermissionError:
-                msg = f'Permission denied on {iface}. Re-run with sudo for live capture.'
-                print(f'[LIVE] {msg}')
+        iface = state['interface']
+        try:
+            sniff(iface=iface, prn=_process_live_packet,
+                  timeout=1, store=False)
+        except PermissionError:
+            msg = f'Permission denied on {iface}. Re-run with sudo for live capture.'
+            print(f'[LIVE] {msg}')
+            if state['running'] and not state['paused']:
                 socketio.emit('capture_error', {'error': msg})
-                state['running'] = False
-                socketio.sleep(1)
-            except OSError as e:
-                msg = f'Cannot open interface {iface}: {e}'
-                print(f'[LIVE] {msg}')
-                socketio.emit('capture_error', {'error': msg})
-                state['running'] = False
-                socketio.sleep(1)
-            except Exception as e:
-                print(f'[LIVE] sniff error: {e}')
-                socketio.sleep(1)
-        else:
-            socketio.sleep(0.2)
+            socketio.sleep(2)
+        except OSError:
+            socketio.sleep(1)
+        except Exception as e:
+            print(f'[LIVE] sniff error: {e}')
+            socketio.sleep(1)
 
 
 def live_stats_thread():
@@ -549,66 +608,76 @@ def simulation_thread():
     recent_packets = []
     traffic_tick = 0
     while True:
+        # Run continuously in background
+        delay = random.uniform(0.12, 0.28)
+        socketio.sleep(delay)
+
+        pkt = _generate_packet()
+        state['packets'].append(pkt)
+        if len(state['packets']) > 2000:
+            state['packets'] = state['packets'][-2000:]
+        recent_packets.append(pkt)
+        if len(recent_packets) > 100:
+            recent_packets = recent_packets[-100:]
+
+        # Feed to Detector Manager
+        scapy_pkt = simulated_to_scapy(pkt)
+        if scapy_pkt:
+            detector_manager.process_packet(scapy_pkt)
+
         if state['running'] and not state['paused']:
-            delay = random.uniform(0.02, 0.18)
-            socketio.sleep(delay)
-
-            pkt = _generate_packet()
-            state['packets'].append(pkt)
-            if len(state['packets']) > 2000:
-                state['packets'] = state['packets'][-2000:]
-            recent_packets.append(pkt)
-            if len(recent_packets) > 100:
-                recent_packets = recent_packets[-100:]
-
             socketio.emit('packet', pkt)
 
-            if SIMULATE_ALERTS and pkt['is_alert']:
-                alert = {
-                    'id': state['alert_count'] + 1,
-                    'ts': pkt['ts'],
-                    'type': random.choice(ATTACK_TYPES),
-                    'threat': pkt['threat'],
-                    'src': pkt['src_ip'],
-                    'dst': pkt['dst_ip'],
-                    'rule': pkt['matched_rule'],
-                    'info': pkt['info'],
-                    'proto': pkt['proto'],
-                }
-                state['alert_count'] += 1
-                state['alerts'].append(alert)
-                if len(state['alerts']) > 500:
-                    state['alerts'] = state['alerts'][-500:]
+        # Inline rule checks for simulated alerts
+        if SIMULATE_ALERTS and pkt['is_alert']:
+            alert = {
+                'id': state['alert_count'] + 1,
+                'ts': pkt['ts'],
+                'type': random.choice(ATTACK_TYPES),
+                'threat': pkt['threat'],
+                'src': pkt['src_ip'],
+                'dst': pkt['dst_ip'],
+                'rule': pkt['matched_rule'],
+                'info': pkt['info'],
+                'proto': pkt['proto'],
+            }
+            state['alert_count'] += 1
+            state['alerts'].append(alert)
+            if len(state['alerts']) > 500:
+                state['alerts'] = state['alerts'][-500:]
+            if state['running'] and not state['paused']:
                 socketio.emit('alert', alert)
 
-            traffic_tick += 1
-            if traffic_tick % 20 == 0:
-                if SIMULATE_ALERTS:
-                    attack_alerts = _check_for_attacks(recent_packets)
-                    for al in attack_alerts:
-                        state['alert_count'] += 1
-                        al['id'] = state['alert_count']
-                        state['alerts'].append(al)
+        traffic_tick += 1
+        if traffic_tick % 20 == 0:
+            if SIMULATE_ALERTS:
+                attack_alerts = _check_for_attacks(recent_packets)
+                for al in attack_alerts:
+                    state['alert_count'] += 1
+                    al['id'] = state['alert_count']
+                    state['alerts'].append(al)
+                    if state['running'] and not state['paused']:
                         socketio.emit('alert', al)
 
-                traffic_point = {
-                    'ts': datetime.now().strftime('%H:%M:%S'),
-                    'pps': round(1 / delay, 1),
-                    'total': state['packet_count'],
-                }
-                state['traffic_history'].append(traffic_point)
-                if len(state['traffic_history']) > 60:
-                    state['traffic_history'] = state['traffic_history'][-60:]
+            traffic_point = {
+                'ts': datetime.now().strftime('%H:%M:%S'),
+                'pps': round(1 / delay, 1),
+                'total': state['packet_count'],
+            }
+            state['traffic_history'].append(traffic_point)
+            if len(state['traffic_history']) > 60:
+                state['traffic_history'] = state['traffic_history'][-60:]
+            
+            if state['running'] and not state['paused']:
                 socketio.emit('traffic_update', {
                     'traffic': traffic_point,
                     'protocol_stats': state['protocol_stats'],
                     'status': _status(),
                 })
-        else:
-            socketio.sleep(0.2)
 
 
 def _status():
+    active_count = sum(1 for d in detector_manager.get_detectors_metadata() if d['enabled'])
     return {
         'packet_count': state['packet_count'],
         'alert_count': state['alert_count'],
@@ -617,6 +686,8 @@ def _status():
         'running': state['running'],
         'paused': state['paused'],
         'uptime': _uptime(),
+        'active_detectors_count': active_count,
+        'selected_rules_file': state['selected_rules_file']
     }
 
 
@@ -655,9 +726,10 @@ def api_alerts():
 @app.route('/api/rules')
 def api_rules():
     rules = []
-    for path in ['default.rules', 'eval.rules']:
+    rule_files = [f for f in os.listdir('.') if f.endswith('.rules')]
+    for path in rule_files:
         if os.path.exists(path):
-            with open(path) as f:
+            with open(path, encoding='utf-8') as f:
                 for i, line in enumerate(f, 1):
                     line = line.strip()
                     rules.append({
@@ -681,6 +753,44 @@ def api_validate_rule():
         return jsonify({'valid': True, 'parsed': str(sigs[0])})
     except ValueError as e:
         return jsonify({'valid': False, 'error': str(e)})
+
+
+@app.route('/api/rules/upload', methods=['POST'])
+def api_rules_upload():
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'No file uploaded'})
+        f = request.files['file']
+        if not f.filename:
+            return jsonify({'success': False, 'error': 'Empty filename'})
+        if not f.filename.lower().endswith('.rules'):
+            return jsonify({'success': False, 'error': 'Only .rules files are supported'})
+        
+        import string
+        safe_chars = "-_.() " + string.ascii_letters + string.digits
+        filename = ''.join(c for c in f.filename if c in safe_chars)
+        if not filename or not filename.endswith('.rules'):
+            filename = "uploaded.rules"
+            
+        dest_path = os.path.join('.', filename)
+        f.save(dest_path)
+        
+        # Load rules
+        global ids_rules
+        state['selected_rules_file'] = filename
+        ids_rules = load_ids_rules(filename)
+        
+        # Emit rules_loaded with rules_files to all clients
+        socketio.emit('rules_loaded', {
+            'rules': state['rules'],
+            'count': len(ids_rules),
+            'selected_rules_file': filename,
+            'rules_files': [file for file in os.listdir('.') if file.endswith('.rules')]
+        }, broadcast=True)
+        
+        return jsonify({'success': True, 'filename': filename, 'rules_count': len(ids_rules)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 
 @app.route('/api/interfaces')
@@ -759,7 +869,25 @@ def on_connect():
         'recent_packets': state['packets'][-50:],
         'recent_alerts': state['alerts'][-20:],
         'traffic_history': state['traffic_history'][-30:],
+        'detectors': detector_manager.get_detectors_metadata(),
+        'rules_files': [f for f in os.listdir('.') if f.endswith('.rules')],
+        'selected_rules_file': state['selected_rules_file']
     })
+
+
+@socketio.on('toggle_detector')
+def on_toggle_detector(data):
+    class_name = data.get('id')
+    enabled = data.get('enabled', True)
+    success = detector_manager.toggle_detector(class_name, enabled)
+    # Broadcast status change to all clients
+    emit('detector_status_changed', {
+        'id': class_name,
+        'enabled': enabled,
+        'success': success,
+        'detectors': detector_manager.get_detectors_metadata(),
+        'status': _status()
+    }, broadcast=True)
 
 
 @socketio.on('start_capture')
@@ -820,8 +948,20 @@ def on_set_filter(data):
 def on_load_rules(data):
     global ids_rules
     path = data.get('path', 'default.rules')
+    
+    # Store currently selected rules file in state
+    state['selected_rules_file'] = path
+    
+    # Reload rules
     ids_rules = load_ids_rules(path)
-    emit('rules_loaded', {'rules': state['rules'], 'count': len(ids_rules)}, broadcast=True)
+    
+    # Emit event to notify frontend
+    emit('rules_loaded', {
+        'rules': state['rules'],
+        'count': len(ids_rules),
+        'selected_rules_file': path,
+        'rules_files': [f for f in os.listdir('.') if f.endswith('.rules')]
+    }, broadcast=True)
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────
@@ -836,4 +976,12 @@ if __name__ == '__main__':
         print('[*] Simulation mode (no real packets, no real alerts).')
         print('[*] To capture real packets: set LIVE_CAPTURE=1 and run with sudo on a host with a real NIC.')
         socketio.start_background_task(simulation_thread)
-    socketio.run(app, host='0.0.0.0', port=5000, debug=False)
+    port_start = int(os.environ.get('PORT', 5000))
+    for port in range(port_start, port_start + 100):
+        try:
+            print(f'[*] Attempting to start server on port {port}...')
+            socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True)
+            break
+        except OSError as e:
+            print(f'[WARN] Port {port} is in use: {e}')
+            continue
