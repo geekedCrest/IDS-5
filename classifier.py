@@ -12,13 +12,35 @@ SCALER_PATH = os.path.join(BASE_DIR, 'uploaded', 'cyber_scaler.joblib')
 ENCODER_PATH = os.path.join(BASE_DIR, 'uploaded', 'cyber_encoder.joblib')
 
 KEY_FEATURES = [
-    ('dst_port',        'Destination Port',       '80=HTTP  443=HTTPS  22=SSH  21=FTP  53=DNS'),
-    ('protocol',        'Protocol',               '6 = TCP     17 = UDP     1 = ICMP     0 = Other'),
-    ('flow_duration',   'Flow Duration (µs)',     'Total session length in microseconds'),
-    ('tot_fwd_pkts',    'Total Fwd Packets',      'Packets sent from source → destination'),
-    ('tot_bwd_pkts',    'Total Bwd Packets',      'Packets sent from destination → source'),
-    ('fwd_pkt_len_max', 'Fwd Packet Length Max',  'Largest forward-direction packet size (bytes)'),
-    ('flow_byts_s',     'Flow Bytes / s',         'Total bytes transferred per second'),
+    # ── Flow identity ──────────────────────────────────────────────────────
+    ('dst_port',           'Destination Port',          '80=HTTP  443=HTTPS  22=SSH  21=FTP  53=DNS  3389=RDP'),
+    ('protocol',           'Protocol',                  '6 = TCP     17 = UDP     1 = ICMP     0 = Other'),
+    ('flow_duration',      'Flow Duration (µs)',        'Total session length in microseconds'),
+    # ── Packet counts ──────────────────────────────────────────────────────
+    ('tot_fwd_pkts',       'Total Fwd Packets',         'Packets sent from source → destination'),
+    ('tot_bwd_pkts',       'Total Bwd Packets',         'Packets sent from destination → source'),
+    ('tot_len_fwd_pkts',   'Total Fwd Payload (bytes)', 'Total byte volume in the forward direction'),
+    ('tot_len_bwd_pkts',   'Total Bwd Payload (bytes)', 'Total byte volume in the backward direction'),
+    # ── Flow rates ─────────────────────────────────────────────────────────
+    ('flow_byts_s',        'Flow Bytes / s',            'Total bytes transferred per second'),
+    ('flow_pkts_s',        'Flow Packets / s',          'Total packets per second (both directions)'),
+    ('fwd_pkts_s',         'Fwd Packets / s',           'Forward-direction packet rate'),
+    ('bwd_pkts_s',         'Bwd Packets / s',           'Backward-direction packet rate'),
+    # ── Packet sizes ───────────────────────────────────────────────────────
+    ('fwd_pkt_len_max',    'Fwd Pkt Length Max',        'Largest forward-direction packet (bytes)'),
+    ('pkt_len_mean',       'Mean Packet Length',        'Average size of all packets in the flow'),
+    ('pkt_len_std',        'Packet Length Std Dev',     'Variance in packet sizes — high = mixed traffic'),
+    # ── Timing ─────────────────────────────────────────────────────────────
+    ('flow_iat_mean',      'Flow IAT Mean (µs)',        'Average inter-arrival time between packets'),
+    ('init_fwd_win_byts',  'Init Fwd Window (bytes)',   'Initial TCP receive window size (forward)'),
+    # ── TCP Flags ──────────────────────────────────────────────────────────
+    ('syn_flag_cnt',       'SYN Flag Count',            'SYN flags seen — high value signals SYN flood'),
+    ('ack_flag_cnt',       'ACK Flag Count',            'ACK flags — normally matches packet count'),
+    ('fin_flag_cnt',       'FIN Flag Count',            'FIN flags — graceful connection teardown'),
+    ('rst_flag_cnt',       'RST Flag Count',            'RST flags — forced resets, scanning indicator'),
+    ('psh_flag_cnt',       'PSH Flag Count',            'PSH flags — data push events in the flow'),
+    # ── Ratios ─────────────────────────────────────────────────────────────
+    ('down_up_ratio',      'Down / Up Ratio',           'Bytes received ÷ bytes sent; >1 = download heavy'),
 ]
 
 _scaler    = None
