@@ -271,45 +271,113 @@
 
     <!-- Classifier Tab -->
     <div class="tab-content" id="tab-classifier">
-      <div class="classifier-panel">
-        <div class="classifier-header">
-          <h3>Packet Details &mdash; Classifier</h3>
-          <p class="classifier-subtitle">Fill in packet features to classify traffic using the ML model</p>
-        </div>
-        <div class="classifier-form-wrap" id="classifier-form-wrap">
-          <div class="empty-state">Loading features...</div>
-        </div>
-        <div class="classifier-toolbar">
-          <label class="clf-csv-label" title="Load any CSV to update feature fields">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM8 17v-2h8v2H8zm0-4v-2h8v2H8z"/></svg>
-            Load CSV
-            <input type="file" id="clf-csv-input" accept=".csv" style="display:none" onchange="classifierLoadCSV(this)">
-          </label>
-          <span class="clf-csv-name" id="clf-csv-name">Using default features</span>
-        </div>
-        <div class="clf-upload-progress" id="clf-upload-progress" style="display:none">
-          <div class="clf-prog-header">
-            <span class="clf-prog-filename" id="clf-prog-filename"></span>
-            <span class="clf-prog-status" id="clf-prog-status"></span>
+      <div class="clf2-wrap">
+
+        <!-- Header bar -->
+        <div class="clf2-header">
+          <div class="clf2-header-left">
+            <span class="clf2-header-icon">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2a10 10 0 100 20A10 10 0 0012 2zm-1 14.5v-5l-2 1.5V11l3-2 3 2v2l-2-1.5v5h-2z"/></svg>
+            </span>
+            <span class="clf2-header-title">ML Traffic Classifier</span>
+            <span class="clf2-header-badge">CICIDS 2017/2018</span>
           </div>
-          <div class="clf-prog-bar-wrap">
-            <div class="clf-prog-bar" id="clf-prog-bar"></div>
-          </div>
-          <div class="clf-prog-stats">
-            <span id="clf-prog-transferred"></span>
-            <span id="clf-prog-rows"></span>
-            <span id="clf-prog-remaining"></span>
+          <div class="clf2-header-right">
+            <span class="clf2-status-dot" id="clf2-status-dot"></span>
+            <span class="clf2-status-text" id="clf2-status-text">Loading model info&hellip;</span>
           </div>
         </div>
-        <div class="classifier-actions">
-          <button class="btn-sm btn-accent" onclick="classifierPredict()">Predict</button>
-          <button class="btn-sm" onclick="classifierClear()">Clear</button>
-          <button class="btn-sm" onclick="classifierFillDefaults()">Fill Defaults</button>
-          <span class="classifier-result" id="classifier-result"></span>
-        </div>
-        <div class="classifier-probs" id="classifier-probs" style="display:none">
-          <h4>Prediction Probabilities</h4>
-          <div class="prob-bars" id="prob-bars"></div>
+
+        <!-- Body: two columns -->
+        <div class="clf2-body">
+
+          <!-- Left column: inputs -->
+          <div class="clf2-inputs-col">
+            <div class="clf2-col-title">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M3 17h18v2H3zm0-7h18v2H3zm0-7h18v2H3z"/></svg>
+              Network Flow Features
+            </div>
+            <div id="classifier-form-wrap" class="clf2-form-wrap">
+              <div class="empty-state">Loading features&hellip;</div>
+            </div>
+
+            <!-- CSV toolbar -->
+            <div class="clf2-csv-bar">
+              <label class="clf-csv-label" title="Load a CICIDS-format CSV to update feature defaults">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM8 17v-2h8v2H8zm0-4v-2h8v2H8z"/></svg>
+                Load CSV
+                <input type="file" id="clf-csv-input" accept=".csv" style="display:none" onchange="classifierLoadCSV(this)">
+              </label>
+              <span class="clf-csv-name" id="clf-csv-name">Using training-set defaults</span>
+            </div>
+
+            <!-- Upload progress -->
+            <div class="clf-upload-progress" id="clf-upload-progress" style="display:none">
+              <div class="clf-prog-header">
+                <span class="clf-prog-filename" id="clf-prog-filename"></span>
+                <span class="clf-prog-status" id="clf-prog-status"></span>
+              </div>
+              <div class="clf-prog-bar-wrap">
+                <div class="clf-prog-bar" id="clf-prog-bar"></div>
+              </div>
+              <div class="clf-prog-stats">
+                <span id="clf-prog-transferred"></span>
+                <span id="clf-prog-rows"></span>
+                <span id="clf-prog-remaining"></span>
+              </div>
+            </div>
+
+            <!-- Action buttons -->
+            <div class="clf2-actions">
+              <button class="btn-sm btn-accent clf2-analyze-btn" onclick="classifierPredict()">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                Analyze Traffic
+              </button>
+              <button class="btn-sm" onclick="classifierFillDefaults()">Load Defaults</button>
+              <button class="btn-sm" onclick="classifierClear()">Clear</button>
+            </div>
+          </div>
+
+          <!-- Right column: result + model info -->
+          <div class="clf2-result-col">
+
+            <!-- Prediction result box -->
+            <div class="clf2-result-box" id="clf2-result-box">
+              <div class="clf2-result-idle" id="clf2-result-idle">
+                <svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor" style="opacity:0.25"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+                <div class="clf2-idle-text">Fill features &amp; click Analyze</div>
+              </div>
+              <div class="clf2-result-content" id="clf2-result-content" style="display:none">
+                <div class="clf2-pred-label" id="clf2-pred-label"></div>
+                <div class="clf2-pred-class" id="clf2-pred-class"></div>
+                <div class="clf2-prob-section" id="clf2-prob-section" style="display:none">
+                  <div class="clf2-prob-title">Top Probabilities</div>
+                  <div id="prob-bars"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Model information -->
+            <div class="clf2-model-info">
+              <div class="clf2-info-title">
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M12 2a10 10 0 100 20A10 10 0 0012 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+                Model Information
+              </div>
+              <div class="clf2-info-grid" id="clf2-info-grid">
+                <span class="clf2-info-k">Dataset</span><span class="clf2-info-v">CICIDS 2017 / 2018</span>
+                <span class="clf2-info-k">Algorithm</span><span class="clf2-info-v">Random Forest</span>
+                <span class="clf2-info-k">Estimators</span><span class="clf2-info-v">200</span>
+                <span class="clf2-info-k">Features</span><span class="clf2-info-v">78</span>
+                <span class="clf2-info-k">Classes</span><span class="clf2-info-v">27</span>
+                <span class="clf2-info-k">Training Rows</span><span class="clf2-info-v">916,666</span>
+              </div>
+              <div class="clf2-classes-hdr">Attack Categories</div>
+              <div class="clf2-classes-list" id="clf2-classes-list">
+                <span class="clf2-class-tag clf2-tag-benign">Benign</span>
+              </div>
+            </div>
+
+          </div>
         </div>
       </div>
     </div>

@@ -1,147 +1,124 @@
 import os
 import warnings
 import joblib
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 warnings.filterwarnings('ignore', category=UserWarning)
 
-MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'random_forest_pipeline.joblib')
-CLEANED_CSV = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cleaned_dataset_sample.csv')
+BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH  = os.path.join(BASE_DIR, 'uploaded', 'cyber_rf_model.joblib')
+SCALER_PATH = os.path.join(BASE_DIR, 'uploaded', 'cyber_scaler.joblib')
+ENCODER_PATH = os.path.join(BASE_DIR, 'uploaded', 'cyber_encoder.joblib')
 
-_model = None
-_feature_info = None
+KEY_FEATURES = [
+    ('dst_port',        'Destination Port',       '80=HTTP  443=HTTPS  22=SSH  21=FTP  53=DNS'),
+    ('protocol',        'Protocol',               '6 = TCP     17 = UDP     1 = ICMP     0 = Other'),
+    ('flow_duration',   'Flow Duration (µs)',     'Total session length in microseconds'),
+    ('tot_fwd_pkts',    'Total Fwd Packets',      'Packets sent from source → destination'),
+    ('tot_bwd_pkts',    'Total Bwd Packets',      'Packets sent from destination → source'),
+    ('fwd_pkt_len_max', 'Fwd Packet Length Max',  'Largest forward-direction packet size (bytes)'),
+    ('flow_byts_s',     'Flow Bytes / s',         'Total bytes transferred per second'),
+]
+
+_scaler    = None
+_encoder   = None
+_model     = None
+_feat_cols = None
 
 
-def _patch_imputers(obj, depth=0):
-    """Fix sklearn version mismatch: older models store _fit_dtype but 1.6+ expects _fill_dtype."""
-    from sklearn.impute import SimpleImputer
-    if isinstance(obj, SimpleImputer):
-        if hasattr(obj, '_fit_dtype') and not hasattr(obj, '_fill_dtype'):
-            obj._fill_dtype = obj._fit_dtype
-        elif hasattr(obj, 'statistics_') and not hasattr(obj, '_fill_dtype'):
-            obj._fill_dtype = obj.statistics_.dtype
-    for attr in ('steps', 'transformers', 'transformer_list'):
-        container = getattr(obj, attr, None)
-        if container:
-            for item in container:
-                if isinstance(item, (list, tuple)):
-                    for sub in item:
-                        if hasattr(sub, '__dict__'):
-                            _patch_imputers(sub, depth + 1)
-                elif hasattr(item, '__dict__'):
-                    _patch_imputers(item, depth + 1)
-    if hasattr(obj, 'named_steps'):
-        for v in obj.named_steps.values():
-            _patch_imputers(v, depth + 1)
-    if hasattr(obj, 'named_transformers_'):
-        for v in obj.named_transformers_.values():
-            _patch_imputers(v, depth + 1)
+def _load_meta():
+    global _scaler, _encoder, _feat_cols
+    if _scaler is not None:
+        return
+    _scaler    = joblib.load(SCALER_PATH)
+    _encoder   = joblib.load(ENCODER_PATH)
+    _feat_cols = list(_scaler.feature_names_in_)
+
+
+def _load_model():
+    global _model
+    if _model is not None:
+        return
+    _load_meta()
+    _model = joblib.load(MODEL_PATH)
 
 
 def get_model():
-    global _model
-    if _model is None:
-        _model = joblib.load(MODEL_PATH)
-        _patch_imputers(_model)
+    _load_model()
     return _model
 
 
+def get_model_metadata():
+    _load_meta()
+    return {
+        'classes': list(_encoder.classes_),
+        'n_features': len(_feat_cols),
+        'dataset': 'CICIDS 2017 / 2018',
+        'algorithm': 'Random Forest',
+        'estimators': 200,
+        'training_samples': 916666,
+    }
+
+
 def get_feature_info():
-    global _feature_info
-    if _feature_info is not None:
-        return _feature_info
-
-    model = get_model()
-    feature_names = list(model.feature_names_in_)
-
-    df = pd.read_csv(CLEANED_CSV, nrows=2000)
+    _load_meta()
+    means = dict(zip(_feat_cols, _scaler.mean_))
     info = {}
-    for col in feature_names:
-        if col not in df.columns:
-            info[col] = {'type': 'numeric', 'median': 0.0}
-            continue
-        if pd.api.types.is_numeric_dtype(df[col]):
-            info[col] = {
-                'type': 'numeric',
-                'median': float(df[col].median()) if not df[col].dropna().empty else 0.0
-            }
-        else:
-            vals = df[col].dropna().unique().tolist()[:50]
-            mode_val = str(df[col].mode().iloc[0]) if not df[col].mode().empty else ''
-            info[col] = {
-                'type': 'categorical',
-                'values': [str(v) for v in vals],
-                'mode': mode_val
-            }
-    _feature_info = info
-    return info
-
-
-def feature_info_from_csv(file_stream, nrows=2000):
-    """Extract feature info from any uploaded CSV, aligned to model features where possible."""
-    model = get_model()
-    model_features = list(model.feature_names_in_)
-
-    df = pd.read_csv(file_stream, nrows=nrows, low_memory=False, on_bad_lines='skip')
-
-    # Drop target-like columns
-    for col in ('Label', ' Label', 'label', 'Predicted_Label'):
-        if col in df.columns:
-            df = df.drop(columns=[col])
-
-    info = {}
-    # Prefer model feature order; fall back to CSV column order for extra cols
-    all_cols = []
-    for c in model_features:
-        if c in df.columns:
-            all_cols.append(c)
-    for c in df.columns:
-        if c not in all_cols:
-            all_cols.append(c)
-
-    for col in all_cols:
-        if col not in df.columns:
-            info[col] = {'type': 'numeric', 'median': 0.0, 'in_model': col in model_features}
-            continue
-        in_model = col in model_features
-        if pd.api.types.is_numeric_dtype(df[col]):
-            info[col] = {
-                'type': 'numeric',
-                'median': float(df[col].median()) if not df[col].dropna().empty else 0.0,
-                'in_model': in_model,
-            }
-        else:
-            vals = df[col].dropna().unique().tolist()[:50]
-            mode_val = str(df[col].mode().iloc[0]) if not df[col].mode().empty else ''
-            info[col] = {
-                'type': 'categorical',
-                'values': [str(v) for v in vals],
-                'mode': mode_val,
-                'in_model': in_model,
-            }
+    for col, label, desc in KEY_FEATURES:
+        info[col] = {
+            'label': label,
+            'description': desc,
+            'type': 'numeric',
+            'median': round(float(means.get(col, 0.0)), 4),
+        }
     return info
 
 
 def predict_single(row_dict):
-    model = get_model()
-    feature_names = list(model.feature_names_in_)
-    row = {}
-    for col in feature_names:
-        val = row_dict.get(col)
-        if val is None or val == '':
-            row[col] = np.nan
-        else:
+    _load_model()
+    means = dict(zip(_feat_cols, _scaler.mean_))
+    row = [means.get(col, 0.0) for col in _feat_cols]
+    col_idx = {col: i for i, col in enumerate(_feat_cols)}
+    for key, val in row_dict.items():
+        if key in col_idx and val not in (None, ''):
             try:
-                row[col] = float(val)
+                row[col_idx[key]] = float(val)
             except (ValueError, TypeError):
-                row[col] = val
-    X = pd.DataFrame([row], columns=feature_names)
-    pred = model.predict(X)
-    result = {'prediction': str(pred[0])}
-    if hasattr(model, 'predict_proba'):
-        probs = model.predict_proba(X)[0]
-        classes = list(model.classes_)
+                pass
+    X = np.array(row, dtype=float).reshape(1, -1)
+    X_scaled = _scaler.transform(X)
+    pred_enc = _model.predict(X_scaled)
+    pred_label = _encoder.inverse_transform(pred_enc)[0]
+    result = {'prediction': str(pred_label)}
+    if hasattr(_model, 'predict_proba'):
+        probs = _model.predict_proba(X_scaled)[0]
+        classes = list(_encoder.classes_)
         class_probs = sorted(zip(classes, probs), key=lambda x: x[1], reverse=True)
-        result['probabilities'] = [{'class': c, 'prob': round(float(p) * 100, 2)} for c, p in class_probs[:5]]
+        result['probabilities'] = [
+            {'class': c, 'prob': round(float(p) * 100, 2)}
+            for c, p in class_probs[:5]
+        ]
     return result
+
+
+def feature_info_from_csv(file_stream, nrows=2000):
+    _load_meta()
+    df = pd.read_csv(file_stream, nrows=nrows, low_memory=False, on_bad_lines='skip')
+    for col in ('Label', ' Label', 'label', 'Predicted_Label'):
+        if col in df.columns:
+            df = df.drop(columns=[col])
+    means = dict(zip(_feat_cols, _scaler.mean_))
+    info = {}
+    for col, label, desc in KEY_FEATURES:
+        if col in df.columns and pd.api.types.is_numeric_dtype(df[col]):
+            med = float(df[col].median()) if not df[col].dropna().empty else means.get(col, 0.0)
+        else:
+            med = means.get(col, 0.0)
+        info[col] = {
+            'label': label,
+            'description': desc,
+            'type': 'numeric',
+            'median': round(med, 4),
+        }
+    return info
