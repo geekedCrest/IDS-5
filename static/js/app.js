@@ -1216,6 +1216,7 @@ function classifierLoadCSV(input) {
     classifierFeatures = data.features;
     classifierLoaded = true;
     renderClassifierForm(data.features);
+    classifierFillDefaults();
     toast('success', 'CSV Loaded', file.name + ' — ' + data.count + ' features');
     setTimeout(() => { progWrap.style.display = 'none'; }, 4000);
   });

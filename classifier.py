@@ -124,17 +124,48 @@ def predict_single(row_dict):
     return result
 
 
+def _norm_col(name):
+    """Normalise a CSV column name to internal snake_case (e.g. 'Dst Port' → 'dst_port')."""
+    import re
+    return re.sub(r'[\s/\-\.]+', '_', name.strip().lower()).strip('_')
+
+
 def feature_info_from_csv(file_stream, nrows=2000):
     _load_meta()
     df = pd.read_csv(file_stream, nrows=nrows, low_memory=False, on_bad_lines='skip')
-    for col in ('Label', ' Label', 'label', 'Predicted_Label'):
-        if col in df.columns:
-            df = df.drop(columns=[col])
+
+    # Drop label / metadata columns
+    drop_candidates = ('Label', ' Label', 'label', 'Predicted_Label',
+                       '__source_file', 'Timestamp', ' Timestamp',
+                       'Src IP', 'Dst IP', 'Src Port', ' Source Port')
+    df = df.drop(columns=[c for c in drop_candidates if c in df.columns])
+
+    # Build a normalised-name → original-name lookup so we can match
+    # internal names like 'dst_port' against CSV headers like 'Dst Port'
+    col_map = {_norm_col(c): c for c in df.columns}
+
+    # Some CSV variants use abbreviated names that don't normalise to the
+    # model's internal names — add explicit aliases here.
+    _ALIASES = {
+        'tot_len_fwd_pkts': ['totlen_fwd_pkts', 'total_length_of_fwd_packets',
+                             'total_fwd_packets_length', 'totlen_fwd_pkts'],
+        'tot_len_bwd_pkts': ['totlen_bwd_pkts', 'total_length_of_bwd_packets',
+                             'total_bwd_packets_length'],
+    }
+    for internal, candidates in _ALIASES.items():
+        if internal not in col_map:
+            for alias in candidates:
+                if alias in col_map:
+                    col_map[internal] = col_map[alias]
+                    break
+
     means = dict(zip(_feat_cols, _scaler.mean_))
     info = {}
     for col, label, desc in KEY_FEATURES:
-        if col in df.columns and pd.api.types.is_numeric_dtype(df[col]):
-            med = float(df[col].median()) if not df[col].dropna().empty else means.get(col, 0.0)
+        csv_col = col_map.get(col)          # e.g. col='dst_port' → csv_col='Dst Port'
+        if csv_col and pd.api.types.is_numeric_dtype(df[csv_col]):
+            series = df[csv_col].dropna()
+            med = float(series.median()) if not series.empty else means.get(col, 0.0)
         else:
             med = means.get(col, 0.0)
         info[col] = {
