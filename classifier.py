@@ -63,7 +63,7 @@ def _load_model():
     if _model is not None:
         return
     _load_meta()
-    _model = joblib.load(MODEL_PATH)
+    _model = joblib.load(MODEL_PATH, mmap_mode='r')
 
 
 def get_model():
