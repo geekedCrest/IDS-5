@@ -16,6 +16,9 @@ const state = {
   trafficHistory: [],
   threatCounts: { LOW: 0, MEDIUM: 0, HIGH: 0, CRITICAL: 0 },
   charts: {},
+  totalBytes: 0,
+  lastBps: 0,
+  datasetReportLoaded: false,
 };
 
 // ─── Socket ───────────────────────────────────────────────────────────────────
@@ -83,7 +86,14 @@ socket.on('traffic_update', (data) => {
   if (data.traffic) {
     state.trafficHistory.push(data.traffic);
     if (state.trafficHistory.length > 60) state.trafficHistory.shift();
+    if (data.traffic.bps !== undefined) state.lastBps = data.traffic.bps;
+    if (data.traffic.total !== undefined) {
+      const avgSize = data.traffic.total > 0 ? Math.round(state.totalBytes / data.traffic.total) : 0;
+      state.avgPacketSize = avgSize;
+    }
   }
+  if (data.total_bytes !== undefined) state.totalBytes = data.total_bytes;
+  if (data.threat_stats) state.threatCounts = data.threat_stats;
   if (data.status) updateStatus(data.status);
   updateCharts();
   updateCounters();
@@ -99,6 +109,8 @@ socket.on('cleared', () => {
   state.alerts = [];
   state.threatCounts = { LOW: 0, MEDIUM: 0, HIGH: 0, CRITICAL: 0 };
   state.trafficHistory = [];
+  state.totalBytes = 0;
+  state.lastBps = 0;
   renderPackets();
   el('alert-tbody').innerHTML = '';
   el('sb-alerts-list').innerHTML = '<div class="empty-state">No alerts detected</div>';
@@ -491,7 +503,7 @@ function showTab(tab) {
   const content = el(`tab-${tab}`);
   if (content) content.classList.add('active');
 
-  if (tab === 'stats') updateCharts();
+  if (tab === 'stats') { updateCharts(); loadDatasetReport(); }
 }
 
 // ─── Charts ───────────────────────────────────────────────────────────────────
@@ -557,6 +569,27 @@ function initCharts() {
     });
   }
 
+  // Bandwidth line
+  const cb = el('chart-bw');
+  if (cb && !state.charts.bw) {
+    state.charts.bw = new Chart(cb, {
+      type: 'line',
+      data: { labels: [], datasets: [{
+        label: 'bytes/s', data: [],
+        borderColor: '#3fb950', backgroundColor: 'rgba(63,185,80,0.08)',
+        borderWidth: 2, pointRadius: 0, fill: true, tension: 0.4,
+      }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { maxTicksLimit: 6 } },
+          y: { min: 0, ticks: { callback: v => fmtBytes(v) + '/s' } },
+        },
+      },
+    });
+  }
+
   // Mini traffic
   const mt = el('mini-chart-traffic');
   if (mt && !state.charts.mini) {
@@ -608,6 +641,15 @@ function updateCharts() {
     state.charts.threat.update('none');
   }
 
+  // Bandwidth line
+  if (state.charts.bw && state.trafficHistory.length) {
+    const labels = state.trafficHistory.slice(-60).map(t => t.ts);
+    const data   = state.trafficHistory.slice(-60).map(t => t.bps || 0);
+    state.charts.bw.data.labels = labels;
+    state.charts.bw.data.datasets[0].data = data;
+    state.charts.bw.update('none');
+  }
+
   // Mini traffic
   if (state.charts.mini && state.trafficHistory.length) {
     const data = state.trafficHistory.slice(-20).map(t => t.pps);
@@ -629,16 +671,107 @@ function updateCharts() {
   }
 }
 
+function fmtBytes(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+}
+
 function updateCounters() {
   const ps = state.protocolStats || {};
+  const tc = state.threatCounts || {};
   setEl('cnt-total', state.packets.length);
   setEl('cnt-alerts', state.alerts.length);
-  setEl('cnt-tcp', ps.TCP || 0);
-  setEl('cnt-udp', ps.UDP || 0);
-  setEl('cnt-icmp', ps.ICMP || 0);
-  setEl('cnt-http', ps.HTTP || 0);
-  setEl('cnt-dns', ps.DNS || 0);
-  setEl('cnt-other', ps.OTHER || 0);
+  setEl('cnt-bytes', fmtBytes(state.totalBytes || 0));
+  const pktTotal = state.packets.length;
+  const avgBps = state.trafficHistory.length
+    ? Math.round(state.trafficHistory.slice(-5).reduce((s, t) => s + (t.bps || 0), 0) / Math.min(state.trafficHistory.length, 5))
+    : 0;
+  setEl('cnt-bps', fmtBytes(avgBps) + '/s');
+  setEl('cnt-threat-low',  tc.LOW      || 0);
+  setEl('cnt-threat-med',  tc.MEDIUM   || 0);
+  setEl('cnt-threat-high', tc.HIGH     || 0);
+  setEl('cnt-threat-crit', tc.CRITICAL || 0);
+  setEl('cnt-tcp',  ps.TCP   || 0);
+  setEl('cnt-udp',  ps.UDP   || 0);
+  setEl('cnt-http', ps.HTTP  || 0);
+  setEl('cnt-dns',  ps.DNS   || 0);
+  setEl('cnt-tls',  ps.TLS   || 0);
+  setEl('cnt-ssh',  ps.SSH   || 0);
+  setEl('cnt-icmp', ps.ICMP  || 0);
+  setEl('cnt-arp',  ps.ARP   || 0);
+}
+
+// ─── Dataset Report ───────────────────────────────────────────────────────────
+async function loadDatasetReport() {
+  if (state.datasetReportLoaded) return;
+  try {
+    const r = await fetch('/api/dataset-report');
+    const d = await r.json();
+    if (!d.success) return;
+    state.datasetReportLoaded = true;
+    _renderDatasetTable(d.classes);
+    _renderDatasetChart(d.classes);
+  } catch (e) { console.error('dataset-report error', e); }
+}
+
+function _renderDatasetTable(classes) {
+  const tbody = el('rpt-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = classes.map((c, i) => `
+    <tr class="${c.is_benign ? 'rpt-row-benign' : ''}">
+      <td class="rpt-td-num">${i + 1}</td>
+      <td class="rpt-td-name">${escHtml(c.name)}</td>
+      <td class="rpt-td-cnt">${c.count.toLocaleString()}</td>
+      <td class="rpt-td-pct">
+        <div class="rpt-bar-wrap">
+          <div class="rpt-bar ${c.is_benign ? 'rpt-bar-benign' : 'rpt-bar-attack'}" style="width:${Math.min(c.pct / 40 * 100, 100)}%"></div>
+          <span class="rpt-bar-lbl">${c.pct >= 0.001 ? c.pct.toFixed(c.pct >= 1 ? 2 : 4) : '<0.001'}%</span>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function _renderDatasetChart(classes) {
+  const canvas = el('chart-dataset');
+  if (!canvas || state.charts.dataset) return;
+  const top12 = classes.slice(0, 12);
+  const colors = top12.map(c => c.is_benign
+    ? 'rgba(63,185,80,0.82)'
+    : 'rgba(248,81,73,0.75)'
+  );
+  state.charts.dataset = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: top12.map(c => c.name),
+      datasets: [{
+        label: 'Samples',
+        data: top12.map(c => c.count),
+        backgroundColor: colors,
+        borderWidth: 0,
+        borderRadius: 4,
+      }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.parsed.x.toLocaleString()} samples (${top12[ctx.dataIndex].pct.toFixed(2)}%)`,
+          },
+        },
+      },
+      scales: {
+        x: { min: 0, ticks: { callback: v => v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v } },
+        y: { ticks: { font: { size: 10 }, maxRotation: 0 } },
+      },
+    },
+  });
 }
 
 // ─── Rules ────────────────────────────────────────────────────────────────────

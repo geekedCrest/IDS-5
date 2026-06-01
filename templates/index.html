@@ -241,6 +241,8 @@
     <!-- Stats Tab -->
     <div class="tab-content" id="tab-stats">
       <div class="stats-grid">
+
+        <!-- Row 1: 3 charts -->
         <div class="stats-card">
           <h3>Protocol Distribution</h3>
           <div class="chart-wrap"><canvas id="chart-proto"></canvas></div>
@@ -249,23 +251,74 @@
           <h3>Traffic Rate (pkt/s)</h3>
           <div class="chart-wrap"><canvas id="chart-traffic"></canvas></div>
         </div>
-        <div class="stats-card wide">
+        <div class="stats-card">
+          <h3>Bandwidth (bytes/s)</h3>
+          <div class="chart-wrap"><canvas id="chart-bw"></canvas></div>
+        </div>
+
+        <!-- Row 2: threat chart + expanded counters -->
+        <div class="stats-card">
           <h3>Threat Level Distribution</h3>
           <div class="chart-wrap"><canvas id="chart-threat"></canvas></div>
         </div>
-        <div class="stats-card counters">
-          <h3>Counters</h3>
+        <div class="stats-card stats-card-2col counters">
+          <h3>Session Counters</h3>
           <div class="counter-grid" id="counter-grid">
-            <div class="counter-item"><span class="cnt-val" id="cnt-total">0</span><span class="cnt-lbl">Total Packets</span></div>
+            <div class="counter-item"><span class="cnt-val" id="cnt-total">0</span><span class="cnt-lbl">Packets</span></div>
             <div class="counter-item"><span class="cnt-val" id="cnt-alerts">0</span><span class="cnt-lbl">Alerts</span></div>
+            <div class="counter-item"><span class="cnt-val cnt-bytes" id="cnt-bytes">0 B</span><span class="cnt-lbl">Total Bytes</span></div>
+            <div class="counter-item"><span class="cnt-val" id="cnt-bps">0 B/s</span><span class="cnt-lbl">Avg Bandwidth</span></div>
+            <div class="counter-item cnt-low"><span class="cnt-val" id="cnt-threat-low">0</span><span class="cnt-lbl">Low</span></div>
+            <div class="counter-item cnt-med"><span class="cnt-val" id="cnt-threat-med">0</span><span class="cnt-lbl">Medium</span></div>
+            <div class="counter-item cnt-high"><span class="cnt-val" id="cnt-threat-high">0</span><span class="cnt-lbl">High</span></div>
+            <div class="counter-item cnt-crit"><span class="cnt-val" id="cnt-threat-crit">0</span><span class="cnt-lbl">Critical</span></div>
             <div class="counter-item"><span class="cnt-val" id="cnt-tcp">0</span><span class="cnt-lbl">TCP</span></div>
             <div class="counter-item"><span class="cnt-val" id="cnt-udp">0</span><span class="cnt-lbl">UDP</span></div>
-            <div class="counter-item"><span class="cnt-val" id="cnt-icmp">0</span><span class="cnt-lbl">ICMP</span></div>
             <div class="counter-item"><span class="cnt-val" id="cnt-http">0</span><span class="cnt-lbl">HTTP</span></div>
             <div class="counter-item"><span class="cnt-val" id="cnt-dns">0</span><span class="cnt-lbl">DNS</span></div>
-            <div class="counter-item"><span class="cnt-val" id="cnt-other">0</span><span class="cnt-lbl">Other</span></div>
+            <div class="counter-item"><span class="cnt-val" id="cnt-tls">0</span><span class="cnt-lbl">TLS</span></div>
+            <div class="counter-item"><span class="cnt-val" id="cnt-ssh">0</span><span class="cnt-lbl">SSH</span></div>
+            <div class="counter-item"><span class="cnt-val" id="cnt-icmp">0</span><span class="cnt-lbl">ICMP</span></div>
+            <div class="counter-item"><span class="cnt-val" id="cnt-arp">0</span><span class="cnt-lbl">ARP</span></div>
           </div>
         </div>
+
+        <!-- Row 3: Full-width Dataset Report -->
+        <div class="stats-card wide rpt-card" id="rpt-card">
+          <div class="rpt-header">
+            <div class="rpt-title-row">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" style="color:var(--accent);flex-shrink:0"><path d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/></svg>
+              <span class="rpt-title">CICIDS 2017/2018 Training Dataset Report</span>
+              <span class="rpt-badge rpt-badge-green">UNIFIED &amp; BALANCED</span>
+              <span class="rpt-badge">200 ESTIMATORS</span>
+              <span class="rpt-badge">78 FEATURES</span>
+            </div>
+            <div class="rpt-summary-row" id="rpt-summary-row">
+              <div class="rpt-sum"><span class="rpt-sum-val">916,666</span><span class="rpt-sum-lbl">Training Samples</span></div>
+              <div class="rpt-sum"><span class="rpt-sum-val">27</span><span class="rpt-sum-lbl">Attack Classes</span></div>
+              <div class="rpt-sum rpt-sum-attack"><span class="rpt-sum-val">60%</span><span class="rpt-sum-lbl">Attack Traffic</span></div>
+              <div class="rpt-sum rpt-sum-benign"><span class="rpt-sum-val">40%</span><span class="rpt-sum-lbl">Benign Traffic</span></div>
+              <div class="rpt-sum"><span class="rpt-sum-val">78</span><span class="rpt-sum-lbl">Features</span></div>
+              <div class="rpt-sum"><span class="rpt-sum-val">Random Forest</span><span class="rpt-sum-lbl">Algorithm</span></div>
+            </div>
+          </div>
+          <div class="rpt-body">
+            <div class="rpt-chart-col">
+              <div class="rpt-chart-title">Top Attack Classes (Training Distribution)</div>
+              <div class="rpt-chart-wrap"><canvas id="chart-dataset"></canvas></div>
+            </div>
+            <div class="rpt-table-col">
+              <div class="rpt-table-title">All 27 Classes</div>
+              <div class="rpt-table-wrap">
+                <table class="rpt-table" id="rpt-table">
+                  <thead><tr><th>#</th><th>Class Name</th><th>Count</th><th>%</th></tr></thead>
+                  <tbody id="rpt-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
 

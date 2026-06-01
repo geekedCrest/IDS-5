@@ -46,6 +46,8 @@ state = {
     'active_filter': '',
     'selected_rules_file': 'default.rules',
     'live_capture_mode': LIVE_CAPTURE,
+    'total_bytes': 0,
+    'threat_stats': {'LOW': 0, 'MEDIUM': 0, 'HIGH': 0, 'CRITICAL': 0},
 }
 
 # Synthetic alerts are off by default in simulation mode (they're fake).
@@ -287,9 +289,11 @@ def _generate_packet():
         'dst_port': dst_port,
     }
 
-    # Update protocol stats
+    # Update protocol stats + byte / threat tracking
     proto_key = proto if proto in state['protocol_stats'] else 'OTHER'
     state['protocol_stats'][proto_key] = state['protocol_stats'].get(proto_key, 0) + 1
+    state['total_bytes'] += length
+    state['threat_stats'][threat] = state['threat_stats'].get(threat, 0) + 1
 
     return pkt
 
@@ -524,6 +528,8 @@ def _process_live_packet(spkt):
 
     proto_key = pkt['proto'] if pkt['proto'] in state['protocol_stats'] else 'OTHER'
     state['protocol_stats'][proto_key] = state['protocol_stats'].get(proto_key, 0) + 1
+    state['total_bytes'] += pkt.get('length', 0)
+    state['threat_stats'][pkt.get('threat', 'LOW')] = state['threat_stats'].get(pkt.get('threat', 'LOW'), 0) + 1
 
     # Feed packet to Detector Manager
     detector_manager.process_packet(spkt)
@@ -581,22 +587,27 @@ def live_capture_thread():
 def live_stats_thread():
     """Emit periodic traffic-rate updates while live capture is running."""
     last_count = 0
+    last_bytes = 0
     last_time = time.time()
     while True:
         socketio.sleep(1.0)
         if not state['running'] or state['paused']:
             last_count = state['packet_count']
+            last_bytes = state['total_bytes']
             last_time = time.time()
             continue
         now = time.time()
         cur = state['packet_count']
+        cur_bytes = state['total_bytes']
         elapsed = max(now - last_time, 0.001)
         pps = round((cur - last_count) / elapsed, 1)
-        last_count, last_time = cur, now
+        bps = round((cur_bytes - last_bytes) / elapsed)
+        last_count, last_bytes, last_time = cur, cur_bytes, now
 
         traffic_point = {
             'ts': datetime.now().strftime('%H:%M:%S'),
             'pps': pps,
+            'bps': bps,
             'total': cur,
         }
         state['traffic_history'].append(traffic_point)
@@ -605,6 +616,8 @@ def live_stats_thread():
         socketio.emit('traffic_update', {
             'traffic': traffic_point,
             'protocol_stats': state['protocol_stats'],
+            'total_bytes': state['total_bytes'],
+            'threat_stats': state['threat_stats'],
             'status': _status(),
         })
 
@@ -671,6 +684,7 @@ def simulation_thread():
             traffic_point = {
                 'ts': datetime.now().strftime('%H:%M:%S'),
                 'pps': round(1 / delay, 1),
+                'bps': round(state['total_bytes'] / max(time.time() - (state['start_time'] or time.time()), 1)),
                 'total': state['packet_count'],
             }
             state['traffic_history'].append(traffic_point)
@@ -681,6 +695,8 @@ def simulation_thread():
                 socketio.emit('traffic_update', {
                     'traffic': traffic_point,
                     'protocol_stats': state['protocol_stats'],
+                    'total_bytes': state['total_bytes'],
+                    'threat_stats': state['threat_stats'],
                     'status': _status(),
                 })
 
@@ -849,6 +865,54 @@ def api_stats():
         'protocol_stats': state['protocol_stats'],
         'traffic_history': state['traffic_history'][-30:],
         'status': _status(),
+        'total_bytes': state['total_bytes'],
+        'threat_stats': state['threat_stats'],
+    })
+
+
+@app.route('/api/dataset-report')
+def api_dataset_report():
+    return jsonify({
+        'success': True,
+        'dataset': 'CICIDS 2017 / 2018 Unified Balanced',
+        'total_samples': 916666,
+        'n_features': 78,
+        'n_classes': 27,
+        'benign_count': 366666,
+        'benign_pct': 40.0,
+        'attack_count': 550000,
+        'attack_pct': 60.0,
+        'algorithm': 'Random Forest',
+        'estimators': 200,
+        'classes': [
+            {'name': 'Benign',                      'count': 366666, 'pct': 40.0000, 'is_benign': True},
+            {'name': 'DDOS attack-HOIC',            'count': 105407, 'pct': 11.5000, 'is_benign': False},
+            {'name': 'DDoS attacks-LOIC-HTTP',      'count':  87830, 'pct':  9.5815, 'is_benign': False},
+            {'name': 'DoS attacks-Hulk',            'count':  70467, 'pct':  7.6873, 'is_benign': False},
+            {'name': 'Bot',                         'count':  44219, 'pct':  4.8239, 'is_benign': False},
+            {'name': 'DoS Hulk',                    'count':  35455, 'pct':  3.8678, 'is_benign': False},
+            {'name': 'FTP-BruteForce',              'count':  29369, 'pct':  3.2039, 'is_benign': False},
+            {'name': 'SSH-Bruteforce',              'count':  28706, 'pct':  3.1316, 'is_benign': False},
+            {'name': 'Infilteration',               'count':  24747, 'pct':  2.7000, 'is_benign': False},
+            {'name': 'PortScan',                    'count':  24136, 'pct':  2.6330, 'is_benign': False},
+            {'name': 'DoS attacks-SlowHTTPTest',    'count':  21512, 'pct':  2.3468, 'is_benign': False},
+            {'name': 'DDoS',                        'count':  19601, 'pct':  2.1383, 'is_benign': False},
+            {'name': 'DoS attacks-GoldenEye',       'count':   6488, 'pct':  0.7078, 'is_benign': False},
+            {'name': 'DoS attacks-Slowloris',       'count':   1673, 'pct':  0.1825, 'is_benign': False},
+            {'name': 'DoS GoldenEye',               'count':   1553, 'pct':  0.1694, 'is_benign': False},
+            {'name': 'FTP-Patator',                 'count':   1241, 'pct':  0.1354, 'is_benign': False},
+            {'name': 'DoS slowloris',               'count':    897, 'pct':  0.0979, 'is_benign': False},
+            {'name': 'SSH-Patator',                 'count':    895, 'pct':  0.0976, 'is_benign': False},
+            {'name': 'DoS Slowhttptest',            'count':    862, 'pct':  0.0940, 'is_benign': False},
+            {'name': 'DDOS attack-LOIC-UDP',        'count':    275, 'pct':  0.0300, 'is_benign': False},
+            {'name': 'Web Attack - Brute Force',    'count':    218, 'pct':  0.0238, 'is_benign': False},
+            {'name': 'Web Attack - XSS',            'count':    102, 'pct':  0.0111, 'is_benign': False},
+            {'name': 'Brute Force -Web',            'count':     84, 'pct':  0.0092, 'is_benign': False},
+            {'name': 'Brute Force -XSS',            'count':     37, 'pct':  0.0040, 'is_benign': False},
+            {'name': 'SQL Injection',               'count':      7, 'pct':  0.0008, 'is_benign': False},
+            {'name': 'Web Attack - SQL Injection',  'count':      4, 'pct':  0.0004, 'is_benign': False},
+            {'name': 'Infiltration',                'count':      2, 'pct':  0.0002, 'is_benign': False},
+        ],
     })
 
 
@@ -959,8 +1023,14 @@ def on_restart():
     state['filtered_count'] = 0
     state['packets'] = []
     state['alerts'] = []
-    state['protocol_stats'] = {'TCP': 0, 'UDP': 0, 'ICMP': 0, 'HTTP': 0, 'DNS': 0, 'OTHER': 0}
+    state['protocol_stats'] = {
+        'TCP': 0, 'UDP': 0, 'ICMP': 0, 'ARP': 0,
+        'HTTP': 0, 'DNS': 0, 'TLS': 0, 'SSH': 0, 'FTP': 0, 'SMTP': 0,
+        'OTHER': 0,
+    }
     state['traffic_history'] = []
+    state['total_bytes'] = 0
+    state['threat_stats'] = {'LOW': 0, 'MEDIUM': 0, 'HIGH': 0, 'CRITICAL': 0}
     state['start_time'] = None
     emit('cleared', {}, broadcast=True)
     time.sleep(0.3)
